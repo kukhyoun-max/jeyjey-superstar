@@ -410,6 +410,7 @@ async function renderResult(id) {
     body = el('div', { class: 'sec' }, el('h2', null, '이 형식은 안 맞음'), el('p', null, String(res.reason || '')));
   } else {
     body = [
+      res.seenVideo === false ? el('div', { class: 'sec' }, el('p', null, '영상을 직접 보지 않고 한 줄 설명과 공개 정보로 쓴 초안입니다. 영상과 맞는지 확인해 주세요.')) : null,
       el('div', { class: 'sec' }, el('h2', null, '왜 먹혔나'), el('p', null, String(res.why || '')), res.format ? el('p', null, `빌려 올 형식: ${res.format}`) : null),
       listSec('전주대로 바꿀 곳', res.change),
       el('div', { class: 'sec' }, el('h2', null, '클립별 프롬프트'),

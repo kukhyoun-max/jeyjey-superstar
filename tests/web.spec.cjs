@@ -418,3 +418,9 @@ test('목록, 투표, 결과 화면에서 처음으로 돌아갈 수 있다', as
     await ctx.close();
   }
 });
+
+test('영상을 보지 않은 분석이면 결과에 그렇게 표시한다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 }, item: { ok: true, card: CARD({ word: '제작', analysis: '완료' }), result: { ...RES, seenVideo: false } } }, { hash: '#/result/a' });
+  await page.getByText('영상을 직접 보지 않고').waitFor();
+  await ctx.close();
+});
