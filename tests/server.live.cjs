@@ -50,14 +50,16 @@ function ok(name, fn) {
   const dup = await u('하영', 'add', { url: 'https://www.youtube.com/shorts/p6kY8-yTCwA', line: '다른 설명' });
   ok('같은 영상 중복 안내', () => assert.equal(dup.duplicate, a.id));
 
-  const tt = await u('국현', 'add', { url: 'https://www.tiktok.com/@scout2015/video/6718335390845095173', line: '1/2' });
-  const ttDup = await u('하영', 'add', { url: 'https://www.tiktok.com/@scout2015/video/6718335390845095173?lang=ko', line: '또' });
-  ok('틱톡 19자리 중복 인식', () => assert.equal(ttDup.duplicate, tt.id));
+  const tt = await u('국현', 'add', { url: 'https://www.tiktok.com/@scout2015/video/6718335390845095173', line: '틱톡' });
+  ok('틱톡 거부', () => assert.equal(tt.error, 'link'));
+  const nums = await u('국현', 'add', { url: 'https://www.youtube.com/watch?v=12345678901', line: '1/2' });
+  const numsDup = await u('하영', 'add', { url: 'https://youtu.be/12345678901', line: '또' });
+  ok('숫자만 있는 영상 ID 중복 인식', () => assert.equal(numsDup.duplicate, nums.id));
 
   const t1list = await u('국현', 'list');
   const c0 = t1list.cards.find((c) => c.id === a.id);
-  const cT = t1list.cards.find((c) => c.id === tt.id);
-  ok('틱톡 ID 자리 수 유지', () => assert.equal(cT.videoId, '6718335390845095173'));
+  const cT = t1list.cards.find((c) => c.id === nums.id);
+  ok('숫자만 있는 영상 ID 유지', () => assert.equal(cT.videoId, '12345678901'));
   ok('날짜처럼 보이는 설명 유지', () => assert.equal(cT.line, '1/2'));
   ok('수식이 글자로 저장됨', () => assert.ok(c0.line.includes('IMPORTXML') && c0.line.startsWith('=')));
   ok('유튜브 공식 정보 수집', () => assert.ok(c0.account && c0.thumbUrl));

@@ -23,13 +23,6 @@ function parseLink(raw) {
     else if (u.path.replace(/\/$/, '') === '/watch') m = u.query.match(/[?&]v=([\w-]+)/);
     return m ? { platform: 'youtube', id: m[1], url: `https://www.youtube.com/watch?v=${m[1]}` } : null;
   }
-  if (u.host === 'vt.tiktok.com' || u.host === 'vm.tiktok.com' || (u.host === 'tiktok.com' && /^\/t\//.test(u.path))) {
-    return { platform: 'tiktok', id: null, url: String(raw).trim().replace(/[?#].*$/, ''), needsResolve: true };
-  }
-  if (u.host === 'tiktok.com' || u.host === 'm.tiktok.com') {
-    m = u.path.match(/^\/@([\w.-]+)\/video\/(\d+)/);
-    return m ? { platform: 'tiktok', id: m[2], url: `https://www.tiktok.com/@${m[1]}/video/${m[2]}` } : null;
-  }
   return null;
 }
 

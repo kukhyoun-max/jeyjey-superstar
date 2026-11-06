@@ -22,14 +22,10 @@ test('유튜브 주소 세 형태는 같은 값이 된다', () => {
   assert.deepEqual(L.parseLink('https://m.youtube.com/watch?feature=a&v=p6kY8-yTCwA'), want);
 });
 
-test('틱톡 일반 주소는 영상 번호를 낸다', () => {
-  assert.deepEqual(L.parseLink('https://www.tiktok.com/@a.b/video/6718335390845095173?lang=ko'),
-    { platform: 'tiktok', id: '6718335390845095173', url: 'https://www.tiktok.com/@a.b/video/6718335390845095173' });
-});
-
-test('틱톡 짧은 주소는 풀어야 한다고 표시한다', () => {
-  assert.deepEqual(L.parseLink('https://vt.tiktok.com/ZSabc/'), { platform: 'tiktok', id: null, url: 'https://vt.tiktok.com/ZSabc/', needsResolve: true });
-  assert.equal(L.parseLink('https://vm.tiktok.com/ZSabc').needsResolve, true);
+test('틱톡은 받지 않는다', () => {
+  for (const x of ['https://www.tiktok.com/@a/video/6718335390845095173', 'https://vt.tiktok.com/ZSabc/', 'https://vm.tiktok.com/ZSabc']) {
+    assert.equal(L.parseLink(x), null, x);
+  }
 });
 
 test('다른 사이트와 빈 값, 비슷한 도메인은 null이다', () => {

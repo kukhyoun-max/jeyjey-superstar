@@ -10,7 +10,7 @@ const TABS_ = {
   thumbs: ['id', 'b64', 'at'],
   mailLog: ['key', 'type', 'at']
 };
-// 숫자·날짜로 자동 변환되면 안 되는 열(틱톡 19자리 ID 등).
+// 숫자·날짜로 자동 변환되면 안 되는 열.
 const TEXT_COLS_ = {
   items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'analysis'],
   votes: ['id', 'voter', 'value'],
@@ -110,9 +110,8 @@ function viewFor_(item, votes, token) {
 }
 
 function fetchMeta_(link) {
-  const api = link.platform === 'youtube' ? 'https://www.youtube.com/oembed?format=json&url='
-    : link.platform === 'tiktok' ? 'https://www.tiktok.com/oembed?url=' : '';
-  if (!api) return {};
+  if (link.platform !== 'youtube') return {}; // 인스타는 공식 oEmbed에 토큰이 필요하다.
+  const api = 'https://www.youtube.com/oembed?format=json&url=';
   try {
     const r = UrlFetchApp.fetch(api + encodeURIComponent(link.url), { muteHttpExceptions: true, followRedirects: true });
     if (r.getResponseCode() !== 200) return {};
@@ -120,17 +119,6 @@ function fetchMeta_(link) {
     return { account: j.author_name || '', title: j.title || '', thumbUrl: j.thumbnail_url || '' };
   } catch (e) {
     return {};
-  }
-}
-
-function resolveShort_(link) {
-  try {
-    const r = UrlFetchApp.fetch(link.url, { followRedirects: false, muteHttpExceptions: true });
-    const h = r.getAllHeaders();
-    const loc = h.Location || h.location;
-    return loc ? parseLink(String(loc)) : null;
-  } catch (e) {
-    return null;
   }
 }
 
@@ -149,9 +137,8 @@ function aList_(b) {
 function aAdd_(b) {
   const line = cleanLine(b.line);
   if (!line) return { ok: false, error: 'line' };
-  let link = parseLink(b.url);
-  if (link && link.needsResolve) link = resolveShort_(link);
-  if (!link || !link.id) return { ok: false, error: 'link' };
+  const link = parseLink(b.url);
+  if (!link) return { ok: false, error: 'link' };
   const dup = rows_('items').find((i) => i.platform === link.platform && i.videoId === String(link.id));
   if (dup) return { ok: true, duplicate: dup.id };
   const meta = fetchMeta_(link);

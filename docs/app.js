@@ -1,7 +1,7 @@
 // 제이제이 수퍼스타 만들기 화면. 사용자가 쓴 글은 모두 textContent로만 넣는다.
 const API_URL = 'https://script.google.com/macros/s/AKfycbwrkeySSxJfPPCwZl0FU8-LT_w86KmjjevHFfDbcsWOJzlTNTJls-mY-p7J8aX6-vszNA/exec';
 const APP_URL = 'https://kukhyoun-max.github.io/jeyjey-superstar/';
-const PLATFORM_NAME = { instagram: '인스타', youtube: '유튜브', tiktok: '틱톡' };
+const PLATFORM_NAME = { instagram: '인스타', youtube: '유튜브' };
 const NEXT_DELAY_MS = 900;
 const TEAM = ['국현', '하영', '산하', '민우', '실장님'];
 
@@ -100,7 +100,7 @@ function renderHome() {
 }
 
 // ── 등록 ─────────────────────────────────────────
-const ADD_ERRORS = { line: '한 줄 설명을 80자 안으로 써 주세요.', link: '인스타, 유튜브, 틱톡 영상 링크만 넣을 수 있습니다.' };
+const ADD_ERRORS = { line: '한 줄 설명을 80자 안으로 써 주세요.', link: '인스타, 유튜브 영상 링크만 넣을 수 있습니다.' };
 
 // 이번에 등록하고 아직 단톡방에 알리지 않은 설명. 앱을 오가도 남도록 저장한다.
 function unsent() { try { return JSON.parse(sessionStorage.getItem('jj_unsent') || '[]'); } catch (x) { return []; } }

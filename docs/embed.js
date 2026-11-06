@@ -13,9 +13,6 @@
     if (link.platform === 'instagram') {
       return { kind: 'iframe', src: `https://www.instagram.com/reel/${id}/embed/`, ratio: '9/16' };
     }
-    if (link.platform === 'tiktok') {
-      return { kind: 'iframe', src: `https://www.tiktok.com/player/v1/${id}${auto ? '?autoplay=1&muted=1' : ''}`, ratio: '9/16' };
-    }
     return null;
   }
 

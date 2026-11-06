@@ -36,7 +36,7 @@ async function open(handlers, { hash = '', token = 'tok', query = '' } = {}) {
     const out = typeof h === 'function' ? await h(b) : h;
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(out || { ok: false, error: 'action' }) });
   });
-  await ctx.route(/youtube\.com\/embed|instagram\.com|tiktok\.com\/player/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>영상</p>' }));
+  await ctx.route(/youtube\.com\/embed|instagram\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>영상</p>' }));
   await ctx.route(/fonts\.g/, (r) => r.abort());
   const page = await ctx.newPage();
   if (token) await page.addInitScript((t) => { if (!localStorage.getItem('jj_token')) localStorage.setItem('jj_token', t); }, token);
