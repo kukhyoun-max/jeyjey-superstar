@@ -1,0 +1,5 @@
+{
+  "name": "jeyjey-superstar",
+  "private": true,
+  "scripts": { "test": "node --test tests/embed.test.cjs tests/logic.test.cjs" }
+}
