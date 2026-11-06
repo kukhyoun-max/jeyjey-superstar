@@ -245,12 +245,12 @@ function starsNode(likes) {
 }
 
 // 플레이어 안쪽이 스크롤되지 않아야 손가락 움직임이 바깥 줄로 넘어간다.
-function mountEmbed(box, c) {
+function mountEmbed(box, c, autoplay) {
   box.replaceChildren();
-  const e = embedFor({ platform: c.platform, id: String(c.videoId), url: c.url });
+  const e = embedFor({ platform: c.platform, id: String(c.videoId), url: c.url }, { autoplay });
   if (e) box.append(el('iframe', { src: e.src, title: c.line, scrolling: 'no', allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: 'allowfullscreen' }));
   // 플레이어는 터치를 가져가므로 위아래에 투명 구역을 얹어 바깥 줄이 넘어가게 한다. 가운데는 재생용으로 비운다.
-  box.append(el('div', { class: 'swipe-zone top' }), el('div', { class: 'swipe-zone bottom' }));
+  box.append(['top', 'bottom', 'left', 'right'].map((s) => el('div', { class: `swipe-zone ${s}` })).reduce((f, n) => { f.append(n); return f; }, document.createDocumentFragment()));
 }
 
 async function renderVote(id) {
@@ -300,10 +300,17 @@ async function renderVote(id) {
     const c = slides[i].card;
     slides.forEach((x, j) => {
       x.node.classList.toggle('current', j === i);
-      const keep = j === i || j === i + 1;
-      const has = x.box.querySelector('iframe');
-      if (keep && !has) mountEmbed(x.box, x.card);
-      if (!keep && x.box.firstChild) x.box.replaceChildren(); // 지나간 영상의 소리를 멈춘다.
+      // 지금 영상은 자동 재생으로 다시 불러온다. 자동 재생이 없는 인스타만 다음 영상을 미리 불러 둔다.
+      const preload = j === i + 1 && x.card.platform === 'instagram';
+      const frame = x.box.querySelector('iframe');
+      if (j === i) {
+        const want = embedFor({ platform: x.card.platform, id: String(x.card.videoId), url: x.card.url }, { autoplay: true });
+        if (!frame || !want || frame.getAttribute('src') !== want.src) mountEmbed(x.box, x.card, true);
+      } else if (preload) {
+        if (!frame) mountEmbed(x.box, x.card, false);
+      } else if (x.box.firstChild) {
+        x.box.replaceChildren(); // 지나간 영상의 소리를 멈춘다.
+      }
     });
     titleEl.textContent = c.line;
     platformEl.textContent = PLATFORM_NAME[c.platform] || '';
@@ -318,7 +325,13 @@ async function renderVote(id) {
     busy = true;
     const at = cur;
     const s0 = slides[at];
-    bottomHolder.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    // 누르자마자 반응한다. 서버 응답을 기다리지 않는다.
+    bottomHolder.querySelectorAll('button').forEach((b) => {
+      b.disabled = true;
+      const picked = b.classList.contains(value === 'like' ? 'yes' : 'no');
+      b.classList.add(picked ? 'picked' : 'dim');
+    });
+    if (navigator.vibrate) navigator.vibrate(12);
     try {
       const v = await api('vote', { id: s0.card.id, value });
       if (!v.ok) {
@@ -349,8 +362,10 @@ async function renderVote(id) {
   };
 
   show(el('section', { class: 'vote' },
-    el('header', { class: 'top' }, el('a', { href: '#/list' }, '‹ 목록'), mineEl),
-    feed, below, bottomHolder));
+    feed,
+    el('div', { class: 'over' },
+      el('header', { class: 'top' }, el('a', { href: '#/list' }, '‹ 목록'), mineEl),
+      el('div', { class: 'over-low' }, below, bottomHolder))));
 
   const seen = new IntersectionObserver((list) => {
     list.forEach((en) => { if (en.isIntersecting) setCurrent(slides.findIndex((x) => x.node === en.target)); });
@@ -422,5 +437,6 @@ function route() {
 }
 
 captureToken();
+document.addEventListener('touchstart', () => {}, { passive: true }); // 아이폰에서 눌림 표시가 나오게 한다.
 window.addEventListener('hashchange', route);
 route();

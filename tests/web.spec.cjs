@@ -296,20 +296,26 @@ test('투표 직후 영상을 빼서 소리를 멈춘다', async () => {
   await ctx.close();
 });
 
-test('인스타는 임베드 여백을 잘라 9:16으로 보여 주고 버튼은 화면 안에 있다', async () => {
+test('인스타는 화면을 가득 채우고 버튼과 제목은 그 위에 있다', async () => {
   const ig = CARD({ platform: 'instagram', videoId: 'De_m5HoTw7A', url: 'https://www.instagram.com/reel/De_m5HoTw7A/' });
   const { page, ctx } = await open({ list: { ok: true, cards: [ig], todo: 1 }, item: { ok: true, card: ig } }, { hash: '#/vote/a' });
   await page.locator('.frame.ig iframe').waitFor();
-  const f = await page.locator('.frame').boundingBox();
+  const f = await page.locator('.slide.current .frame').boundingBox();
   const i = await page.locator('.frame iframe').boundingBox();
-  assert.ok(Math.abs(f.width / f.height - 9 / 16) < 0.01, `틀 비율 ${f.width / f.height}`);
-  assert.ok(Math.abs(i.width / f.width - 1.4222) < 0.01, `임베드 폭 ${i.width / f.width}`);
-  assert.ok(Math.abs(i.y - (f.y - 54)) < 1, '머리 54px 밀기');
+  assert.ok(Math.abs(f.width - 390) < 1 && Math.abs(f.height - 844) < 1, `틀 ${f.width}x${f.height}`);
+  const video = Math.max(f.width, f.height * 9 / 16);
+  assert.ok(Math.abs(i.width - video * 1.4222) < 2, `임베드 폭 ${i.width}`);
+  const videoH = video * 16 / 9;
+  const videoTop = i.y + 54;
+  assert.ok(videoTop <= f.y + 1 && videoTop + videoH >= f.y + f.height - 1, '영상이 위아래를 채운다');
+  const videoLeft = i.x + (i.width - video) / 2;
+  assert.ok(videoLeft <= f.x + 1 && videoLeft + video >= f.x + f.width - 1, '영상이 좌우를 채운다');
   const b = await page.getByRole('button', { name: '좋아요' }).boundingBox();
-  assert.ok(b.y + b.height <= 844);
+  assert.ok(b.y + b.height <= 844 && b.y > f.y, '버튼이 영상 위에 있다');
+  const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y).textContent, [b.x + b.width / 2, b.y + b.height / 2]);
+  assert.equal(hit, '좋아요');
   await ctx.close();
 });
-
 test('좋아요 뒤 다음 영상으로 스스로 넘어가고 다시 불러오지 않는다', async () => {
   const cards = [CARD({ id: 'a' }), CARD({ id: 'b', line: '둘째', videoId: 'YojzkmCrcmw' })];
   const { page, calls, ctx } = await open({
@@ -341,26 +347,63 @@ test('손으로 넘기면 다음 영상이 현재가 되고 표는 그 영상에
   await ctx.close();
 });
 
-test('지금 영상과 다음 영상만 불러오고 지나간 영상은 내려서 소리를 멈춘다', async () => {
+test('유튜브는 지금 영상만 자동 재생으로 불러오고 지나간 영상은 내린다', async () => {
   const cards = ['a', 'b', 'c', 'd'].map((id, i) => CARD({ id, line: id, videoId: `vid${i}` }));
   const { page, ctx } = await open({ list: { ok: true, cards, todo: 4 } }, { hash: '#/vote/a' });
   await page.locator('.slide.current iframe').waitFor();
-  assert.equal(await page.locator('.feed iframe').count(), 2);
+  assert.equal(await page.locator('.feed iframe').count(), 1);
+  assert.ok((await page.locator('.slide.current iframe').getAttribute('src')).includes('autoplay=1'));
   await page.locator('.feed').evaluate((n) => n.scrollTo(0, n.clientHeight * 2));
   await page.locator('.below').getByText('c', { exact: true }).waitFor();
   const srcs = await page.locator('.feed iframe').evaluateAll((x) => x.map((i) => i.src));
-  assert.equal(srcs.some((s) => s.includes('vid0')), false);
-  assert.ok(srcs.some((s) => s.includes('vid2')));
+  assert.equal(srcs.length, 1);
+  assert.ok(srcs[0].includes('vid2'));
   await ctx.close();
 });
 
+test('인스타는 다음 영상을 미리 불러 둔다', async () => {
+  const cards = ['a', 'b'].map((id, i) => CARD({ id, line: id, platform: 'instagram', videoId: `ig${i}`, url: `https://www.instagram.com/reel/ig${i}/` }));
+  const { page, ctx } = await open({ list: { ok: true, cards, todo: 2 } }, { hash: '#/vote/a' });
+  await page.locator('.slide.current iframe').waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.feed iframe').length === 2);
+  await ctx.close();
+});
+
+test('좋아요와 아니에요는 크기가 같다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [CARD()], todo: 1 } }, { hash: '#/vote/a' });
+  const a = await page.getByRole('button', { name: '아니에요' }).boundingBox();
+  const b = await page.getByRole('button', { name: '좋아요' }).boundingBox();
+  assert.ok(Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1);
+  await ctx.close();
+});
+
+test('누른 버튼은 서버 응답 전에 바로 반응한다', async () => {
+  const { page, ctx } = await open({
+    list: { ok: true, cards: [CARD()], todo: 1 },
+    vote: async () => { await new Promise((r) => setTimeout(r, 700)); return { ok: true, card: CARD({ word: '완료', myVote: 'no', likes: 0, nos: 1 }) }; }
+  }, { hash: '#/vote/a' });
+  await page.getByRole('button', { name: '아니에요' }).click();
+  await page.locator('.acts .no.picked').waitFor({ timeout: 300 });
+  assert.equal(await page.locator('.acts .yes.dim').count(), 1);
+  await ctx.close();
+});
 test('영상 위아래는 넘기기 구역이고 가운데는 플레이어가 터치를 받는다', async () => {
   const { page, ctx } = await open({ list: { ok: true, cards: [CARD()], todo: 1 } }, { hash: '#/vote/a' });
   await page.locator('.slide.current iframe').waitFor();
   const f = await page.locator('.slide.current .frame').boundingBox();
   const at = (r) => page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e.tagName + (e.className ? '.' + e.className : ''); }, [f.x + f.width / 2, f.y + f.height * r]);
   assert.equal(await at(0.5), 'IFRAME');
-  assert.equal(await at(0.12), 'DIV.swipe-zone top');
-  assert.equal(await at(0.88), 'DIV.swipe-zone bottom');
+  assert.equal(await at(0.15), 'DIV.swipe-zone top');
+  assert.equal(await at(0.72), 'DIV.swipe-zone bottom');
+  await ctx.close();
+});
+
+test('영상 양옆도 넘기기 구역이다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [CARD()], todo: 1 } }, { hash: '#/vote/a' });
+  await page.locator('.slide.current iframe').waitFor();
+  const name = await page.evaluate(() => { const e = document.elementFromPoint(12, innerHeight / 2); return e.className; });
+  assert.equal(name, 'swipe-zone left');
+  const right = await page.evaluate(() => document.elementFromPoint(innerWidth - 12, innerHeight / 2).className);
+  assert.equal(right, 'swipe-zone right');
   await ctx.close();
 });
