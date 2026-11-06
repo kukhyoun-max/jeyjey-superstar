@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { embedFor } = require('../web/embed.js');
+const { embedFor } = require('../docs/embed.js');
 
 test('유튜브 쇼츠는 공식 임베드 주소를 낸다', () => {
   const e = embedFor({ platform: 'youtube', id: 'abc_123-X', url: 'https://www.youtube.com/shorts/abc_123-X' });
