@@ -3,7 +3,6 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwrkeySSxJfPPCwZl0FU8-L
 const APP_URL = 'https://kukhyoun-max.github.io/jeyjey-superstar/';
 const PLATFORM_NAME = { instagram: '인스타', youtube: '유튜브', tiktok: '틱톡' };
 const NEXT_DELAY_MS = 900;
-let pendingNext = null; // 투표 뒤 바로 보여 줄 다음 카드
 
 const app = document.getElementById('app');
 const mem = {};
@@ -99,49 +98,93 @@ function renderHome() {
 // ── 등록 ─────────────────────────────────────────
 const ADD_ERRORS = { line: '한 줄 설명을 80자 안으로 써 주세요.', link: '인스타, 유튜브, 틱톡 영상 링크만 넣을 수 있습니다.' };
 
+// 이번에 등록하고 아직 단톡방에 알리지 않은 설명. 앱을 오가도 남도록 저장한다.
+function unsent() { try { return JSON.parse(sessionStorage.getItem('jj_unsent') || '[]'); } catch (x) { return []; } }
+function setUnsent(list) { try { sessionStorage.setItem('jj_unsent', JSON.stringify(list)); } catch (x) { /* 저장 못 하면 화면 안에서만 */ } }
+
+function toast(text, link) {
+  document.querySelector('.toast')?.remove();
+  const t = el('div', { class: 'toast', role: 'status' }, el('span', null, text), link || null);
+  document.body.append(t);
+  setTimeout(() => t.remove(), link ? 5000 : 2200);
+}
+
+function shareText(lines) {
+  if (lines.length === 1) return `[제이제이] 새 레퍼런스: ${lines[0]}`;
+  return `[제이제이] 새 레퍼런스 ${lines.length}개\n${lines.map((x) => `- ${x}`).join('\n')}`;
+}
+
 function renderAdd() {
   const url = el('input', { id: 'url', inputmode: 'url', autocomplete: 'off', value: sessionStorage.getItem('jj_paste') || '' });
   sessionStorage.removeItem('jj_paste');
   const line = el('input', { id: 'line', maxlength: 80, autocomplete: 'off', placeholder: '어떤 영상인지, 왜 골랐는지' });
   const err = el('p', { class: 'err', role: 'alert' });
   const btn = el('button', { class: 'btn y', type: 'submit' }, '등록하기');
+  const note = el('p', { class: 'note', role: 'status' });
+  const shareBox = el('div', { class: 'share-box' });
+
+  const paste = el('button', { class: 'btn w', type: 'button', on: { click: async () => {
+    err.textContent = '';
+    try {
+      url.value = (await navigator.clipboard.readText()).trim();
+      line.focus();
+    } catch (x) {
+      err.textContent = '붙여넣지 못했습니다. 링크 칸을 길게 눌러 넣어 주세요.';
+      url.focus();
+    }
+  } } }, '붙여넣기');
+
+  const drawShare = () => {
+    const lines = unsent();
+    shareBox.replaceChildren();
+    if (!lines.length) return;
+    shareBox.append(el('button', { class: 'btn line', type: 'button', on: { click: async () => {
+      const text = shareText(lines);
+      try {
+        if (navigator.share) await navigator.share({ text, url: APP_URL });
+        else { await navigator.clipboard.writeText(`${text}\n${APP_URL}`); toast('문구를 복사했습니다. 단톡방에 붙여 넣어 주세요.'); }
+        setUnsent([]);
+        drawShare();
+      } catch (x) {
+        if (x.name !== 'AbortError') note.textContent = `복사하지 못했습니다. 이 주소를 보내 주세요: ${APP_URL}`;
+      }
+    } } }, `단톡방에 ${lines.length}개 알리기`));
+  };
+
   show(el('form', { class: 'form', on: { submit: async (e) => {
     e.preventDefault();
     err.textContent = '';
     if (!url.value.trim()) { err.textContent = '영상 링크를 넣어 주세요.'; return; }
-    if (!line.value.trim()) { err.textContent = '한 줄 설명을 써 주세요.'; return; }
+    const text = line.value.trim();
+    if (!text) { err.textContent = '한 줄 설명을 써 주세요.'; return; }
     btn.disabled = true;
     try {
-      const r = await api('add', { url: url.value.trim(), line: line.value.trim() });
-      if (r.ok && r.duplicate) { go(`#/vote/${r.duplicate}`); return; }
-      if (r.ok) { renderAdded(line.value.trim()); return; }
-      err.textContent = ADD_ERRORS[r.error] || '등록하지 못했습니다. 다시 눌러 주세요.';
+      const r = await api('add', { url: url.value.trim(), line: text });
+      if (r.ok && r.duplicate) {
+        toast('이미 등록된 영상입니다.', el('a', { href: `#/vote/${r.duplicate}` }, '투표하러 가기'));
+      } else if (r.ok) {
+        setUnsent([...unsent(), text]);
+        toast('등록했습니다');
+        drawShare();
+      } else {
+        err.textContent = ADD_ERRORS[r.error] || '등록하지 못했습니다. 다시 눌러 주세요.';
+        btn.disabled = false;
+        return;
+      }
+      url.value = '';
+      line.value = '';
     } catch (x) { if (x.message !== 'token') err.textContent = '연결하지 못했습니다. 다시 눌러 주세요.'; }
     btn.disabled = false;
   } } },
     el('a', { class: 'home-link', href: '#/' }, '‹ 처음으로'),
-    el('h1', { class: 'display' }, '어떤 영상인가요?'),
+    el('h1', { class: 'display' }, '찾은 영상 넣기'),
+    paste,
     el('label', { for: 'url' }, '영상 링크', url),
-    el('label', { for: 'line' }, '한 줄 설명', line), err, btn));
-  (url.value ? line : url).focus();
-}
-
-function renderAdded(line) {
-  const note = el('p', { class: 'note', role: 'status' });
-  show(el('section', { class: 'form' },
-    el('h1', { class: 'display' }, '등록했습니다'),
-    el('p', { class: 'note' }, '단톡방에 알려야 팀원이 투표할 수 있습니다.'),
-    el('div', { class: 'sp' }),
-    el('button', { class: 'btn y', style: 'padding:26px;font-size:22px', on: { click: async () => {
-      const text = `[제이제이] 새 레퍼런스: ${line}`;
-      try {
-        if (navigator.share) { await navigator.share({ text, url: APP_URL }); return; }
-        await navigator.clipboard.writeText(`${text}\n${APP_URL}`);
-        note.textContent = '문구를 복사했습니다. 단톡방에 붙여 넣어 주세요.';
-      } catch (e) { if (e.name !== 'AbortError') note.textContent = `복사하지 못했습니다. 이 주소를 보내 주세요: ${APP_URL}`; }
-    } } }, '단톡방에 알리기'),
-    note,
+    el('label', { for: 'line' }, '한 줄 설명', line), err, btn,
+    el('div', { class: 'sp' }), shareBox, note,
     el('a', { class: 'btn line', href: '#/list' }, '투표 목록 보기')));
+  drawShare();
+  if (url.value) line.focus();
 }
 
 // ── 목록 ─────────────────────────────────────────
@@ -201,89 +244,119 @@ function starsNode(likes) {
   return el('div', { class: 'stars', role: 'img', 'aria-label': `좋아요 ${likes || 0}개` }, '★'.repeat(n) + '☆'.repeat(3 - n));
 }
 
-function frameNode(c) {
-  const box = el('div', { class: `frame${c.platform === 'instagram' ? ' ig' : ''}` });
+// 플레이어 안쪽이 스크롤되지 않아야 손가락 움직임이 바깥 줄로 넘어간다.
+function mountEmbed(box, c) {
+  box.replaceChildren();
   const e = embedFor({ platform: c.platform, id: String(c.videoId), url: c.url });
-  if (e) box.append(el('iframe', { src: e.src, title: c.line, allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: 'allowfullscreen' }));
-  return box;
-}
-
-// 표를 넣자마자 목록을 미리 받아 두고, 도장을 보여 준 뒤 다음 영상으로 넘긴다.
-async function nextAfter(id, listPromise) {
-  try {
-    const r = await listPromise;
-    const next = r.ok && r.cards.find((c) => c.word === '투표' && c.id !== id);
-    if (next) { pendingNext = next; go(`#/vote/${next.id}`); return; }
-    go('#/list');
-  } catch (e) { go('#/list'); }
-}
-
-// 릴스처럼 지금 화면이 위로 나가고 다음 영상이 아래에서 올라온다.
-function riseIn(section) {
-  const old = app.querySelector('.vote');
-  if (!old) { show(section); return; }
-  const finish = () => { old.remove(); section.classList.remove('rise'); };
-  old.classList.add('leave');
-  section.classList.add('rise');
-  app.append(section);
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
-  section.addEventListener('animationend', finish, { once: true });
+  if (e) box.append(el('iframe', { src: e.src, title: c.line, scrolling: 'no', allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: 'allowfullscreen' }));
+  // 플레이어는 터치를 가져가므로 위아래에 투명 구역을 얹어 바깥 줄이 넘어가게 한다. 가운데는 재생용으로 비운다.
+  box.append(el('div', { class: 'swipe-zone top' }), el('div', { class: 'swipe-zone bottom' }));
 }
 
 async function renderVote(id) {
-  const ready = pendingNext && pendingNext.id === id ? pendingNext : null;
-  pendingNext = null;
-  let c = ready;
-  if (!c) {
-    show(el('div', { class: 'empty' }, '불러오는 중입니다.'));
-    let r;
-    try { r = await api('item', { id }); } catch (e) { if (e.message !== 'token') show(retryBox(() => renderVote(id))); return; }
+  show(el('div', { class: 'empty' }, '불러오는 중입니다.'));
+  let cards;
+  let first;
+  try {
+    const r = await api('list');
     if (!r.ok) { show(retryBox(() => renderVote(id))); return; }
-    c = r.card;
-  }
-  if (c.word === '제작') { location.replace(`#/result/${id}`); return; }
-  const frame = frameNode(c);
-  const original = el('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer' }, '원본 영상 보기');
-  const mine = c.myVote ? `내 표: ${c.myVote === 'like' ? '좋아요' : '아니에요'}` : '';
+    cards = r.cards;
+    first = cards.find((c) => c.id === id);
+    if (!first) {
+      const one = await api('item', { id });
+      if (!one.ok) { show(retryBox(() => renderVote(id))); return; }
+      first = one.card;
+    }
+  } catch (e) { if (e.message !== 'token') show(retryBox(() => renderVote(id))); return; }
+  if (first.word === '제작') { location.replace(`#/result/${id}`); return; }
+
+  // 연 영상을 맨 앞에 두고, 내 표가 필요한 영상을 잇는다.
+  const items = [first, ...cards.filter((c) => c.word === '투표' && c.id !== id)];
+  const slides = items.map((card) => {
+    const box = el('div', { class: `frame${card.platform === 'instagram' ? ' ig' : ''}` });
+    return { card, box, node: el('div', { class: 'slide' }, box) };
+  });
+  const feed = el('div', { class: 'feed' }, slides.map((x) => x.node));
+  const mineEl = el('span', { class: 'count' });
+  const titleEl = el('div', { class: 't' });
+  const platformEl = el('span');
+  const original = el('a', { target: '_blank', rel: 'noopener noreferrer' }, '원본 영상 보기');
+  const below = el('div', { class: 'below' }, titleEl, el('div', { class: 'sub' }, platformEl, original));
+  const bottomHolder = el('div');
+  let cur = -1;
   let busy = false;
-  const bottom = el('div', { class: 'acts' });
+
+  const drawActs = () => {
+    const c = slides[cur].card;
+    const bar = el('div', { class: 'acts' },
+      el('button', { class: 'no', 'aria-pressed': c.myVote === 'no' ? 'true' : 'false', on: { click: () => vote('no') } }, '아니에요'),
+      el('button', { class: 'yes', 'aria-pressed': c.myVote === 'like' ? 'true' : 'false', on: { click: () => vote('like') } }, '좋아요'));
+    bottomHolder.replaceChildren(bar);
+  };
+
+  const setCurrent = (i) => {
+    if (i === cur || i < 0) return;
+    cur = i;
+    const c = slides[i].card;
+    slides.forEach((x, j) => {
+      x.node.classList.toggle('current', j === i);
+      const keep = j === i || j === i + 1;
+      const has = x.box.querySelector('iframe');
+      if (keep && !has) mountEmbed(x.box, x.card);
+      if (!keep && x.box.firstChild) x.box.replaceChildren(); // 지나간 영상의 소리를 멈춘다.
+    });
+    titleEl.textContent = c.line;
+    platformEl.textContent = PLATFORM_NAME[c.platform] || '';
+    original.href = c.url;
+    mineEl.textContent = c.myVote ? `내 표: ${c.myVote === 'like' ? '좋아요' : '아니에요'}` : '';
+    history.replaceState(null, '', `#/vote/${c.id}`);
+    if (!busy) drawActs();
+  };
 
   const vote = async (value) => {
     if (busy) return;
     busy = true;
-    bottom.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    const at = cur;
+    const s0 = slides[at];
+    bottomHolder.querySelectorAll('button').forEach((b) => { b.disabled = true; });
     try {
-      const v = await api('vote', { id, value });
+      const v = await api('vote', { id: s0.card.id, value });
       if (!v.ok) {
-        if (v.error === 'closed') { location.replace(`#/result/${id}`); return; }
+        if (v.error === 'closed') { location.replace(`#/result/${s0.card.id}`); return; }
         throw new Error('vote');
       }
       const word = v.justProduced ? '제작' : v.card.word;
-      frame.replaceChildren(el('span', { class: `stamp hit w-${word}` }, word));
+      s0.card = { ...s0.card, myVote: value, word };
+      s0.box.replaceChildren(el('span', { class: `stamp hit w-${word}` }, word));
       const text = v.justProduced ? '내 표로 3개가 찼습니다. Claude가 분석을 시작합니다.'
         : word === '탈락' ? '아니에요 3개로 탈락했습니다.'
           : v.card.likes === 2 ? '별 하나만 더 받으면 제작입니다.' : '내 표를 넣었습니다.';
-      bottom.replaceWith(el('div', { class: 'done-msg' }, starsNode(v.card.likes), el('p', { role: 'status' }, text)));
-      const listing = v.justProduced ? null : api('list');
-      setTimeout(() => (v.justProduced ? go(`#/result/${id}`) : nextAfter(id, listing)), v.justProduced ? 1600 : NEXT_DELAY_MS);
+      bottomHolder.replaceChildren(el('div', { class: 'done-msg' }, starsNode(v.card.likes), el('p', { role: 'status' }, text)));
+      if (v.justProduced) { setTimeout(() => go(`#/result/${s0.card.id}`), 1600); return; }
+      setTimeout(() => {
+        busy = false;
+        const next = slides.findIndex((x, j) => j > at && x.card.myVote === null);
+        if (next < 0) { go('#/list'); return; }
+        slides[next].node.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        drawActs();
+      }, NEXT_DELAY_MS);
     } catch (e) {
       if (e.message === 'token') return;
       busy = false;
-      bottom.querySelectorAll('button').forEach((b) => { b.disabled = false; });
-      original.parentElement.append(el('span', { role: 'alert' }, '표를 넣지 못했습니다. 다시 눌러 주세요.'));
+      drawActs();
+      below.append(el('span', { role: 'alert' }, '표를 넣지 못했습니다. 다시 눌러 주세요.'));
     }
   };
 
-  bottom.append(
-    el('button', { class: 'no', 'aria-pressed': c.myVote === 'no' ? 'true' : 'false', on: { click: () => vote('no') } }, '아니에요'),
-    el('button', { class: 'yes', 'aria-pressed': c.myVote === 'like' ? 'true' : 'false', on: { click: () => vote('like') } }, '좋아요'));
+  show(el('section', { class: 'vote' },
+    el('header', { class: 'top' }, el('a', { href: '#/list' }, '‹ 목록'), mineEl),
+    feed, below, bottomHolder));
 
-  const section = el('section', { class: 'vote' },
-    el('header', { class: 'top' }, el('a', { href: '#/list' }, '‹ 목록'), mine ? el('span', { class: 'count' }, mine) : null),
-    el('div', { class: 'stage' }, frame),
-    el('div', { class: 'below' }, el('div', { class: 't' }, c.line), el('div', { class: 'sub' }, el('span', null, PLATFORM_NAME[c.platform]), original)),
-    bottom);
-  if (ready) riseIn(section); else show(section);
+  const seen = new IntersectionObserver((list) => {
+    list.forEach((en) => { if (en.isIntersecting) setCurrent(slides.findIndex((x) => x.node === en.target)); });
+  }, { root: feed, threshold: 0.6 });
+  slides.forEach((x) => seen.observe(x.node));
+  setCurrent(0);
 }
 
 // ── 결과 ─────────────────────────────────────────

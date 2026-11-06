@@ -78,16 +78,10 @@ a { color: inherit; }
 
 /* 투표 */
 .vote { position: absolute; inset: 0; height: 100dvh; display: flex; flex-direction: column; background: var(--blue); }
-.vote.rise { animation: rise .32s cubic-bezier(.2,.8,.2,1) both; z-index: 2; }
-.vote.leave { animation: leave .32s cubic-bezier(.2,.8,.2,1) both; }
-@keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
-@keyframes leave { from { transform: none; } to { transform: translateY(-100%); } }
-@media (prefers-reduced-motion: reduce) { .vote.rise, .vote.leave { animation: none; } }
-.stage { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center; padding: 0 10px; }
 /* 릴스 비율. 남는 높이 안에서 가장 크게. 위아래 글·버튼 자리는 약 208px */
 .frame { position: relative; width: min(100%, calc((100dvh - 208px) * 9 / 16)); aspect-ratio: 9 / 16; border-radius: 15px; overflow: hidden; background: var(--navy); }
 /* 인스타 임베드: 영상 칸이 폭의 4:5, 머리 54px. 키워서 머리와 좌우 여백을 틀 밖으로 민다 */
-.frame.ig iframe { position: absolute; width: 142.22%; max-width: none; height: calc(100% + 54px); left: -21.11%; top: -54px; }
+.frame.ig iframe { position: absolute; width: 142.22%; max-width: none; height: calc(100% + 54px + 320px); left: -21.11%; top: -54px; }
 .frame iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
 .frame .stamp { font-size: 112px; }
 .below { padding: 8px 12px 0; font-size: 14px; font-weight: 700; line-height: 1.35; }
@@ -129,3 +123,16 @@ a { color: inherit; }
 .msg-box p { margin: 0 0 16px; font-size: 14.5px; font-weight: 700; line-height: 1.5; }
 .empty { padding: 36px 20px; text-align: center; font-weight: 700; line-height: 1.5; }
 .empty .btn { margin-top: 14px; }
+
+/* 알림 */
+.toast { position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 9; display: flex; gap: 12px; align-items: center; width: max-content; max-width: calc(100% - 28px); background: var(--ink); color: #fff; border-radius: 13px; padding: 13px 16px; font-size: 15px; font-weight: 800; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+.toast a { color: var(--yellow); white-space: nowrap; }
+.share-box:empty { display: none; }
+
+/* 릴스처럼 세로로 한 칸씩 넘긴다 */
+.feed { flex: 1; min-height: 0; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.feed::-webkit-scrollbar { display: none; }
+.slide { height: 100%; scroll-snap-align: start; scroll-snap-stop: always; display: flex; justify-content: center; align-items: center; padding: 0 10px; }
+.swipe-zone { position: absolute; left: 0; right: 0; z-index: 1; }
+.swipe-zone.top { top: 0; height: 32%; }
+.swipe-zone.bottom { bottom: 0; height: 32%; }

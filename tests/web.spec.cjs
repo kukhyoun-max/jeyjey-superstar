@@ -102,30 +102,63 @@ test('붙여넣기 후 한 줄이 없으면 등록할 수 없다', async () => {
   await ctx.close();
 });
 
-test('등록하면 단톡방 알리기 화면이 나오고 공유 문구에 토큰이 없다', async () => {
-  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 }, add: { ok: true, id: 'n' } }, { hash: '#/add' });
-  await page.addInitScript(() => {});
-  await page.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
+test('등록하면 알림만 뜨고 입력 화면에 남아 계속 넣을 수 있다', async () => {
+  let n = 0;
+  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 }, add: () => ({ ok: true, id: `n${++n}` }) }, { hash: '#/add' });
   await page.getByLabel('영상 링크').fill('https://youtu.be/p6kY8-yTCwA');
   await page.getByLabel('한 줄 설명').fill('학식 경주');
   await page.getByRole('button', { name: '등록하기' }).click();
-  await page.getByRole('button', { name: '단톡방에 알리기' }).click();
-  const s = await page.evaluate(() => window.__shared);
-  assert.ok(s.text.includes('학식 경주'));
-  assert.equal(JSON.stringify(s).includes('tok'), false);
+  await page.getByRole('status').filter({ hasText: '등록했습니다' }).waitFor();
+  assert.ok(page.url().endsWith('#/add'));
+  assert.equal(await page.getByLabel('영상 링크').inputValue(), '');
+  assert.equal(await page.getByLabel('한 줄 설명').inputValue(), '');
+  await page.getByRole('button', { name: '단톡방에 1개 알리기' }).waitFor();
+  await page.getByLabel('영상 링크').fill('https://youtu.be/YojzkmCrcmw');
+  await page.getByLabel('한 줄 설명').fill('둘째 영상');
+  await page.getByRole('button', { name: '등록하기' }).click();
+  await page.getByRole('button', { name: '단톡방에 2개 알리기' }).waitFor();
   await ctx.close();
 });
 
-test('중복 링크는 기존 투표 화면으로 보낸다', async () => {
-  const { page, ctx } = await open({ list: { ok: true, cards: [CARD({ id: 'd' })], todo: 1 }, add: { ok: true, duplicate: 'd' }, item: { ok: true, card: CARD({ id: 'd' }) } }, { hash: '#/add' });
+test('모아서 알리면 설명이 모두 들어가고 토큰은 없으며 수가 비워진다', async () => {
+  let n = 0;
+  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 }, add: () => ({ ok: true, id: `n${++n}` }) }, { hash: '#/add' });
+  await page.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
+  for (const [u, l] of [['https://youtu.be/p6kY8-yTCwA', '학식 경주'], ['https://youtu.be/YojzkmCrcmw', '둘째 영상']]) {
+    await page.getByLabel('영상 링크').fill(u);
+    await page.getByLabel('한 줄 설명').fill(l);
+    await page.getByRole('button', { name: '등록하기' }).click();
+    await page.getByLabel('영상 링크').and(page.locator('[value=""], input')).waitFor();
+    await page.waitForFunction(() => document.getElementById('url').value === '');
+  }
+  await page.getByRole('button', { name: '단톡방에 2개 알리기' }).click();
+  await page.waitForFunction(() => window.__shared);
+  const s = await page.evaluate(() => window.__shared);
+  assert.ok(s.text.includes('학식 경주') && s.text.includes('둘째 영상'));
+  assert.equal(JSON.stringify(s).includes('tok'), false);
+  await page.getByRole('button', { name: /단톡방에/ }).waitFor({ state: 'detached' });
+  await ctx.close();
+});
+
+test('입력 화면의 붙여넣기 버튼으로 다음 링크를 넣는다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 } }, { hash: '#/add' });
+  await page.evaluate(() => navigator.clipboard.writeText('https://youtu.be/YojzkmCrcmw'));
+  await page.getByRole('button', { name: '붙여넣기', exact: true }).click();
+  await page.waitForFunction(() => document.getElementById('url').value.includes('YojzkmCrcmw'));
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'line');
+  await ctx.close();
+});
+test('중복 링크는 알림으로 알리고 입력 화면에 남는다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [CARD({ id: 'd' })], todo: 1 }, add: { ok: true, duplicate: 'd' } }, { hash: '#/add' });
   await page.getByLabel('영상 링크').fill('https://youtu.be/p6kY8-yTCwA');
   await page.getByLabel('한 줄 설명').fill('다른 설명');
   await page.getByRole('button', { name: '등록하기' }).click();
-  await page.getByRole('button', { name: '좋아요' }).waitFor();
-  assert.ok(page.url().includes('#/vote/d'));
+  await page.getByRole('status').filter({ hasText: '이미 등록된 영상' }).waitFor();
+  assert.ok(page.url().endsWith('#/add'));
+  assert.equal(await page.getByRole('link', { name: '투표하러 가기' }).getAttribute('href'), '#/vote/d');
+  assert.equal(await page.getByRole('button', { name: /단톡방에/ }).count(), 0);
   await ctx.close();
 });
-
 const FOUR = [CARD({ id: 'a' }), CARD({ id: 'b', word: '완료', myVote: 'like', likes: 2, nos: 0 }), CARD({ id: 'c', word: '제작', likes: 3, nos: 0 }), CARD({ id: 'd', word: '탈락', nos: 3, likes: 0, line: '<img src=x onerror=window.__x=1>' })];
 
 test('목록의 도장 단어와 색이 맞고 HTML은 글자로 나온다', async () => {
@@ -277,20 +310,57 @@ test('인스타는 임베드 여백을 잘라 9:16으로 보여 주고 버튼은
   await ctx.close();
 });
 
-test('좋아요 뒤 다음 영상이 다시 불러오지 않고 위로 올라온다', async () => {
+test('좋아요 뒤 다음 영상으로 스스로 넘어가고 다시 불러오지 않는다', async () => {
   const cards = [CARD({ id: 'a' }), CARD({ id: 'b', line: '둘째', videoId: 'YojzkmCrcmw' })];
   const { page, calls, ctx } = await open({
     list: { ok: true, cards, todo: 2 },
     item: (x) => ({ ok: true, card: cards.find((c) => c.id === x.id) }),
     vote: { ok: true, card: CARD({ word: '완료', myVote: 'like', likes: 1, nos: 0 }) }
   }, { hash: '#/vote/a' });
-  // 짧은 전환을 놓치지 않게 시험에서만 느리게 한다.
-  await page.addStyleTag({ content: '.vote.rise,.vote.leave{animation-duration:1.5s!important}' });
   await page.getByRole('button', { name: '좋아요' }).click();
-  await page.locator('.vote.rise').waitFor({ timeout: 4000, state: 'attached' });
-  assert.ok((await page.locator('.vote.rise iframe').getAttribute('src')).includes('YojzkmCrcmw'));
+  await page.locator('.slide.current iframe[src*="YojzkmCrcmw"]').waitFor({ timeout: 5000 });
+  await page.waitForURL(/#\/vote\/b/);
   assert.equal(calls.filter((c) => c.action === 'item' && c.id === 'b').length, 0);
-  await page.locator('.vote.leave').waitFor({ state: 'detached', timeout: 3000 });
-  await page.getByText('둘째').waitFor();
+  await page.locator('.below').getByText('둘째').waitFor();
+  await ctx.close();
+});
+
+test('손으로 넘기면 다음 영상이 현재가 되고 표는 그 영상에 들어간다', async () => {
+  const cards = [CARD({ id: 'a', line: '첫째' }), CARD({ id: 'b', line: '둘째', videoId: 'YojzkmCrcmw' })];
+  const { page, calls, ctx } = await open({
+    list: { ok: true, cards, todo: 2 },
+    vote: { ok: true, card: CARD({ id: 'b', word: '완료', myVote: 'no', likes: 0, nos: 1 }) }
+  }, { hash: '#/vote/a' });
+  await page.locator('.slide.current iframe').waitFor();
+  await page.locator('.feed').evaluate((n) => n.scrollTo(0, n.clientHeight));
+  await page.locator('.below').getByText('둘째').waitFor();
+  await page.waitForURL(/#\/vote\/b/);
+  await page.getByRole('button', { name: '아니에요' }).click();
+  await page.locator('.stamp', { hasText: '완료' }).waitFor();
+  assert.equal(calls.find((c) => c.action === 'vote').id, 'b');
+  await ctx.close();
+});
+
+test('지금 영상과 다음 영상만 불러오고 지나간 영상은 내려서 소리를 멈춘다', async () => {
+  const cards = ['a', 'b', 'c', 'd'].map((id, i) => CARD({ id, line: id, videoId: `vid${i}` }));
+  const { page, ctx } = await open({ list: { ok: true, cards, todo: 4 } }, { hash: '#/vote/a' });
+  await page.locator('.slide.current iframe').waitFor();
+  assert.equal(await page.locator('.feed iframe').count(), 2);
+  await page.locator('.feed').evaluate((n) => n.scrollTo(0, n.clientHeight * 2));
+  await page.locator('.below').getByText('c', { exact: true }).waitFor();
+  const srcs = await page.locator('.feed iframe').evaluateAll((x) => x.map((i) => i.src));
+  assert.equal(srcs.some((s) => s.includes('vid0')), false);
+  assert.ok(srcs.some((s) => s.includes('vid2')));
+  await ctx.close();
+});
+
+test('영상 위아래는 넘기기 구역이고 가운데는 플레이어가 터치를 받는다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [CARD()], todo: 1 } }, { hash: '#/vote/a' });
+  await page.locator('.slide.current iframe').waitFor();
+  const f = await page.locator('.slide.current .frame').boundingBox();
+  const at = (r) => page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e.tagName + (e.className ? '.' + e.className : ''); }, [f.x + f.width / 2, f.y + f.height * r]);
+  assert.equal(await at(0.5), 'IFRAME');
+  assert.equal(await at(0.12), 'DIV.swipe-zone top');
+  assert.equal(await at(0.88), 'DIV.swipe-zone bottom');
   await ctx.close();
 });
