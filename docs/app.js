@@ -3,6 +3,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwrkeySSxJfPPCwZl0FU8-L
 const APP_URL = 'https://kukhyoun-max.github.io/jeyjey-superstar/';
 const PLATFORM_NAME = { instagram: '인스타', youtube: '유튜브', tiktok: '틱톡' };
 const NEXT_DELAY_MS = 900;
+const TEAM = ['국현', '하영', '산하', '민우', '실장님'];
 
 const app = document.getElementById('app');
 const mem = {};
@@ -30,19 +31,11 @@ async function api(action, body = {}) {
   const out = await r.json();
   if (out && out.error === 'token') {
     store.del('jj_token');
-    renderLogin();
+    store.del('jj_name');
+    renderPick();
     throw new Error('token');
   }
   return out;
-}
-
-function captureToken() {
-  const q = new URLSearchParams(location.search);
-  const t = q.get('t');
-  if (t) {
-    store.set('jj_token', t);
-    history.replaceState(null, '', location.pathname + location.hash);
-  }
 }
 
 function retryBox(fn) {
@@ -50,26 +43,33 @@ function retryBox(fn) {
     el('button', { class: 'btn y', on: { click: fn } }, '다시 불러오기'));
 }
 
-// ── 내 코드 ─────────────────────────────────────
-function renderLogin() {
-  const input = el('input', { id: 'code', autocomplete: 'one-time-code', autocapitalize: 'off' });
+// ── 이름 고르기 ─────────────────────────────────
+function renderPick() {
   const err = el('p', { class: 'err', role: 'alert' });
-  const btn = el('button', { class: 'btn y', type: 'submit' }, '들어가기');
-  const form = el('form', { class: 'form', on: { submit: async (e) => {
-    e.preventDefault();
-    btn.disabled = true;
+  const pick = async (name, btn) => {
     err.textContent = '';
+    btn.disabled = true;
     try {
-      const r = await api('login', { code: input.value.trim() });
-      if (r.ok) { store.set('jj_token', r.token); location.hash = '#/'; route(); return; }
-      err.textContent = r.error === 'locked' ? '여러 번 틀려 잠겼습니다. 15분 뒤에 다시 넣어 주세요.' : '코드가 맞지 않습니다. 메일로 받은 코드를 확인해 주세요.';
-    } catch (x) { err.textContent = '연결하지 못했습니다. 다시 눌러 주세요.'; }
+      const r = await api('pick', { name });
+      if (r.ok) {
+        store.set('jj_token', r.token);
+        store.set('jj_name', r.name);
+        location.hash = '#/';
+        route();
+        return;
+      }
+    } catch (x) { /* 아래 안내로 처리 */ }
+    err.textContent = '들어가지 못했습니다. 다시 눌러 주세요.';
     btn.disabled = false;
-  } } },
-    el('h1', { class: 'display' }, '내 코드'),
-    el('p', { class: 'note' }, '처음 한 번만 넣으면 이 브라우저에서 기억합니다.'),
-    el('label', { for: 'code' }, '내 코드', input), err, btn);
-  show(form);
+  };
+  const buttons = TEAM.map((name) => {
+    const b = el('button', { class: 'btn y', type: 'button', on: { click: () => pick(name, b) } }, name);
+    return b;
+  });
+  show(el('section', { class: 'form' },
+    el('h1', { class: 'display' }, '누구세요?'),
+    el('p', { class: 'note' }, '처음 한 번만 고르면 이 브라우저에서 기억합니다. 표는 이름 없이 저장합니다.'),
+    buttons, err));
 }
 
 // ── 첫 화면 ─────────────────────────────────────
@@ -83,7 +83,11 @@ async function pasteLink() {
 function renderHome() {
   const badge = el('span', { class: 'badge', hidden: 'hidden' });
   const voteLink = el('a', { class: 'btn w', href: '#/list' }, '투표하기', badge);
+  const name = store.get('jj_name');
+  const who = el('div', { class: 'who' }, name ? el('span', null, name) : null,
+    el('button', { type: 'button', on: { click: () => { store.del('jj_token'); store.del('jj_name'); renderPick(); } } }, '이름 바꾸기'));
   show(el('section', { class: 'home' },
+    who,
     el('div', { class: 'hill' }),
     el('img', { class: 'jj', src: 'jeyjey.webp', alt: '' }),
     el('h1', { class: 'display' }, '제이제이 ', el('span', null, '수퍼스타'), el('br'), '만들기 프로젝트'),
@@ -296,6 +300,7 @@ async function renderVote(id) {
 
   const setCurrent = (i) => {
     if (i === cur || i < 0) return;
+    const prev = cur;
     cur = i;
     const c = slides[i].card;
     slides.forEach((x, j) => {
@@ -307,7 +312,8 @@ async function renderVote(id) {
         const want = embedFor({ platform: x.card.platform, id: String(x.card.videoId), url: x.card.url }, { autoplay: true });
         if (!frame || !want || frame.getAttribute('src') !== want.src) mountEmbed(x.box, x.card, true);
       } else if (preload) {
-        if (!frame) mountEmbed(x.box, x.card, false);
+        // 방금까지 보던 영상이면 다시 불러 소리를 멈춘다.
+        if (!frame || j === prev) mountEmbed(x.box, x.card, false);
       } else if (x.box.firstChild) {
         x.box.replaceChildren(); // 지나간 영상의 소리를 멈춘다.
       }
@@ -350,8 +356,8 @@ async function renderVote(id) {
         busy = false;
         const next = slides.findIndex((x, j) => j > at && x.card.myVote === null);
         if (next < 0) { go('#/list'); return; }
+        setCurrent(next); // 스크롤 전에 바꿔야 도중에 누른 표가 다음 영상에 들어간다.
         slides[next].node.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-        drawActs();
       }, NEXT_DELAY_MS);
     } catch (e) {
       if (e.message === 'token') return;
@@ -427,7 +433,7 @@ async function renderResult(id) {
 
 // ── 길 찾기 ──────────────────────────────────────
 function route() {
-  if (!store.get('jj_token')) { renderLogin(); return; }
+  if (!store.get('jj_token')) { renderPick(); return; }
   const h = location.hash || '#/';
   let m;
   if ((m = h.match(/^#\/vote\/([\w-]+)/))) renderVote(m[1]);
@@ -437,7 +443,6 @@ function route() {
   else renderHome();
 }
 
-captureToken();
 document.addEventListener('touchstart', () => {}, { passive: true }); // 아이폰에서 눌림 표시가 나오게 한다.
 window.addEventListener('hashchange', route);
 route();

@@ -1,22 +1,35 @@
 // 제이제이 수퍼스타 만들기 서버. 규칙은 logic.gs, 여기는 시트·메일·권한만 다룬다.
-// 스크립트 속성: SECRET, PC_KEY, TOKENS, CODES, MAILS, OWNER, APP_URL, MAIL_TEST, LOGIN_FAILS
-// 토큰·코드·메일 주소는 시트와 로그에 쓰지 않는다.
+// 방식(2026-11-06 담당자 결정): 공용 링크 + 처음 열 때 이름 고르기. 링크가 있으면 누구나 들어올 수 있다.
+// 스크립트 속성: SECRET, PC_KEY, OWNER, APP_URL. 투표 기록에는 이름 대신 영상별 해시만 남긴다.
 
+const TEAM_ = ['국현', '하영', '산하', '민우', '실장님'];
 const TABS_ = {
-  items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'createdAt', 'produced', 'analysis', 'tries'],
+  items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'createdAt', 'produced', 'analysis', 'tries', 'retryAt'],
   votes: ['id', 'voter', 'value', 'at'],
   results: ['id', 'json', 'at'],
   thumbs: ['id', 'b64', 'at'],
   mailLog: ['key', 'type', 'at']
 };
+// 숫자·날짜로 자동 변환되면 안 되는 열(틱톡 19자리 ID 등).
+const TEXT_COLS_ = {
+  items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'analysis'],
+  votes: ['id', 'voter', 'value'],
+  results: ['id', 'json'],
+  thumbs: ['id', 'b64'],
+  mailLog: ['key', 'type']
+};
 const TAB_NAMES_ = { items: '레퍼런스', votes: '투표', results: '결과', thumbs: '첫화면', mailLog: '메일기록' };
-const MAX_LOGIN_FAILS_ = 5;
-const LOGIN_LOCK_MS_ = 15 * 60 * 1000;
 const MAX_TRIES_ = 3;
+const RETRY_MS_ = 60 * 60 * 1000;
 
 function props_() { return PropertiesService.getScriptProperties(); }
-function jsonProp_(key) { return JSON.parse(props_().getProperty(key) || '{}'); }
 function has_(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+
+function applyText_(key, s) {
+  TEXT_COLS_[key].forEach((h) => {
+    s.getRange(1, TABS_[key].indexOf(h) + 1, s.getMaxRows(), 1).setNumberFormat('@');
+  });
+}
 
 function tab_(key) {
   const ss = SpreadsheetApp.getActive();
@@ -26,6 +39,7 @@ function tab_(key) {
     s = ss.insertSheet(name);
     s.getRange(1, 1, 1, TABS_[key].length).setValues([TABS_[key]]);
     s.setFrozenRows(1);
+    applyText_(key, s);
   }
   return s;
 }
@@ -35,9 +49,12 @@ function rows_(key) {
   const n = s.getLastRow();
   if (n < 2) return [];
   const heads = TABS_[key];
+  const text = TEXT_COLS_[key];
   return s.getRange(2, 1, n - 1, heads.length).getValues().map((r, i) => {
     const o = { _row: i + 2 };
-    heads.forEach((h, j) => { o[h] = r[j]; });
+    heads.forEach((h, j) => {
+      o[h] = text.indexOf(h) >= 0 ? String(r[j]).replace(/^'(?=[=+\-@])/, '') : r[j];
+    });
     return o;
   });
 }
@@ -50,33 +67,26 @@ function setCell_(key, row, field, value) {
   tab_(key).getRange(row, TABS_[key].indexOf(field) + 1).setValue(value);
 }
 
-function voterHash_(token) {
-  const sig = Utilities.computeHmacSha256Signature(token, props_().getProperty('SECRET'));
-  return Utilities.base64EncodeWebSafe(sig);
+function hmac_(text) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(text, props_().getProperty('SECRET')));
 }
 
-function tokenOk_(token) {
-  return typeof token === 'string' && has_(jsonProp_('TOKENS'), token);
+function tokenFor_(member) { return hmac_(`token:${member}`); }
+function memberOf_(token) {
+  if (typeof token !== 'string' || !token) return null;
+  return TEAM_.find((m) => tokenFor_(m) === token) || null;
 }
+// 영상마다 달라서 시트를 봐도 같은 사람의 표를 묶을 수 없다.
+function voterHash_(token, id) { return hmac_(`vote:${memberOf_(token)}:${id}`); }
 
 function pcOk_(key) {
   const want = props_().getProperty('PC_KEY');
   return !!want && key === want;
 }
 
-// ── 메일 ─────────────────────────────────────────────
-function sendAll_(subject, bodyFor) {
-  const mails = jsonProp_('MAILS');
-  const tokens = jsonProp_('TOKENS');
-  const app = props_().getProperty('APP_URL') || '';
-  const owner = props_().getProperty('OWNER');
-  const testOnly = props_().getProperty('MAIL_TEST') === '1';
-  Object.keys(tokens).forEach((token) => {
-    const to = mails[tokens[token]];
-    if (!to) return;
-    if (testOnly && to !== owner) return;
-    MailApp.sendEmail({ to, subject, body: bodyFor(`${app}?t=${token}`), name: '제이제이 수퍼스타 만들기' });
-  });
+// ── 메일(담당자에게만) ───────────────────────────────
+function sendOwner_(subject, body) {
+  MailApp.sendEmail({ to: props_().getProperty('OWNER'), subject, body: `${body}\n\n앱 열기: ${props_().getProperty('APP_URL') || ''}`, name: '제이제이 수퍼스타 만들기' });
 }
 
 function sendOnce_(key, type, send) {
@@ -86,7 +96,8 @@ function sendOnce_(key, type, send) {
 }
 
 // ── 화면용 ───────────────────────────────────────────
-function viewFor_(item, votes, voter) {
+function viewFor_(item, votes, token) {
+  const voter = voterHash_(token, item.id);
   const mine = votes.filter((v) => v.id === item.id);
   const t = tally(mine);
   let my = null;
@@ -115,7 +126,8 @@ function fetchMeta_(link) {
 function resolveShort_(link) {
   try {
     const r = UrlFetchApp.fetch(link.url, { followRedirects: false, muteHttpExceptions: true });
-    const loc = r.getAllHeaders().Location || r.getAllHeaders().location;
+    const h = r.getAllHeaders();
+    const loc = h.Location || h.location;
     return loc ? parseLink(String(loc)) : null;
   } catch (e) {
     return null;
@@ -123,25 +135,14 @@ function resolveShort_(link) {
 }
 
 // ── 동작 ─────────────────────────────────────────────
-function aLogin_(b) {
-  const now = Date.now();
-  const fails = jsonProp_('LOGIN_FAILS');
-  if (fails.until && now < fails.until) return { ok: false, error: 'locked' };
-  const codes = jsonProp_('CODES');
-  const code = String(b.code || '').trim();
-  if (code && has_(codes, code)) {
-    props_().deleteProperty('LOGIN_FAILS');
-    return { ok: true, token: codes[code] };
-  }
-  const count = (fails.count || 0) + 1;
-  props_().setProperty('LOGIN_FAILS', JSON.stringify(count >= MAX_LOGIN_FAILS_ ? { until: now + LOGIN_LOCK_MS_ } : { count }));
-  return { ok: false, error: 'badcode' };
+function aPick_(b) {
+  if (TEAM_.indexOf(b.name) < 0) return { ok: false, error: 'name' };
+  return { ok: true, token: tokenFor_(b.name), name: b.name };
 }
 
 function aList_(b) {
-  const voter = voterHash_(b.token);
   const votes = rows_('votes');
-  const cards = rows_('items').map((i) => viewFor_(i, votes, voter));
+  const cards = rows_('items').map((i) => viewFor_(i, votes, b.token));
   return { ok: true, cards: sortCards(cards), todo: cards.filter((c) => c.word === '투표').length };
 }
 
@@ -150,14 +151,14 @@ function aAdd_(b) {
   if (!line) return { ok: false, error: 'line' };
   let link = parseLink(b.url);
   if (link && link.needsResolve) link = resolveShort_(link);
-  if (!link) return { ok: false, error: 'link' };
-  const dup = rows_('items').find((i) => i.platform === link.platform && String(i.videoId) === String(link.id));
+  if (!link || !link.id) return { ok: false, error: 'link' };
+  const dup = rows_('items').find((i) => i.platform === link.platform && i.videoId === String(link.id));
   if (dup) return { ok: true, duplicate: dup.id };
   const meta = fetchMeta_(link);
-  const id = Utilities.getUuid().slice(0, 8);
+  const id = `r${Utilities.getUuid().slice(0, 8)}`;
   append_('items', {
-    id, url: link.url, platform: link.platform, videoId: link.id, line: safeCell(line),
-    account: safeCell(meta.account || ''), title: safeCell(meta.title || ''), thumbUrl: meta.thumbUrl || '',
+    id, url: link.url, platform: link.platform, videoId: String(link.id), line: safeCell(line),
+    account: safeCell(String(meta.account || '').trim()), title: safeCell(String(meta.title || '').trim()), thumbUrl: meta.thumbUrl || '',
     createdAt: Date.now(), produced: '', analysis: '', tries: 0
   });
   return { ok: true, id };
@@ -165,11 +166,11 @@ function aAdd_(b) {
 
 function aVote_(b) {
   if (b.value !== 'like' && b.value !== 'no') return { ok: false, error: 'value' };
-  const voter = voterHash_(b.token);
   const item = rows_('items').find((i) => i.id === b.id);
   if (!item) return { ok: false, error: 'notfound' };
   if (!canVote(!!item.produced)) return { ok: false, error: 'closed' };
-  append_('votes', { id: b.id, voter, value: b.value, at: Date.now() });
+  append_('votes', { id: b.id, voter: voterHash_(b.token, b.id), value: b.value, at: Date.now() });
+  SpreadsheetApp.flush();
   const votes = rows_('votes');
   const t = tally(votes.filter((v) => v.id === b.id));
   const justProduced = shouldProduce(t, false);
@@ -179,15 +180,13 @@ function aVote_(b) {
     item.produced = 1;
     item.analysis = '대기';
   }
-  return { ok: true, justProduced, card: viewFor_(item, votes, voter), _item: item };
+  return { ok: true, justProduced, card: viewFor_(item, votes, b.token), _item: justProduced ? item : undefined };
 }
 
 function aItem_(b) {
-  const voter = voterHash_(b.token);
   const item = rows_('items').find((i) => i.id === b.id);
   if (!item) return { ok: false, error: 'notfound' };
-  const card = viewFor_(item, rows_('votes'), voter);
-  const out = { ok: true, card };
+  const out = { ok: true, card: viewFor_(item, rows_('votes'), b.token) };
   const th = rows_('thumbs').find((x) => x.id === b.id);
   if (th) out.thumb = th.b64;
   if (item.produced) {
@@ -201,9 +200,10 @@ function aPcPending_() {
   const items = rows_('items');
   const thumbs = {};
   rows_('thumbs').forEach((x) => { thumbs[x.id] = 1; });
+  const now = Date.now();
   return {
     ok: true,
-    analyze: items.filter((i) => i.produced && i.analysis === '대기')
+    analyze: items.filter((i) => i.produced && i.analysis === '대기' && Number(i.retryAt || 0) <= now)
       .map((i) => ({ id: i.id, url: i.url, platform: i.platform, line: i.line, account: i.account, title: i.title, tries: i.tries })),
     thumbs: items.filter((i) => !i.thumbUrl && !thumbs[i.id]).map((i) => ({ id: i.id, url: i.url, platform: i.platform }))
   };
@@ -220,79 +220,50 @@ function aPcThumb_(b) {
 function aPcResult_(b) {
   const item = rows_('items').find((i) => i.id === b.id);
   if (!item) return { ok: false, error: 'notfound' };
-  if (rows_('results').some((r) => r.id === b.id)) return { ok: true, skipped: true };
+  if (rows_('results').some((r) => r.id === b.id)) {
+    // 저장과 상태 변경 사이에 중단됐어도 다시 분석하지 않게 맞춘다.
+    if (item.analysis !== '완료') setCell_('items', item._row, 'analysis', '완료');
+    return { ok: true, skipped: true };
+  }
   const json = JSON.stringify(b.result || {});
   if (json.length > 45000) return { ok: false, error: 'toolarge' };
   append_('results', { id: b.id, json, at: Date.now() });
   setCell_('items', item._row, 'analysis', '완료');
-  return { ok: true, _done: item };
+  return { ok: true, _done: Object.assign({}, item, { fit: (b.result || {}).fit }) };
 }
 
+// 일시 장애로 바로 끝나지 않게 시도 사이를 1시간 둔다. final이면 바로 끝낸다(삭제된 영상 등).
 function aPcFail_(b) {
   const item = rows_('items').find((i) => i.id === b.id);
   if (!item) return { ok: false, error: 'notfound' };
+  if (item.analysis !== '대기') return { ok: true, skipped: true };
   const tries = Number(item.tries || 0) + 1;
-  const final = tries >= MAX_TRIES_;
+  const final = !!b.final || tries >= MAX_TRIES_;
   setCell_('items', item._row, 'tries', tries);
   setCell_('items', item._row, 'analysis', final ? '실패' : '대기');
+  setCell_('items', item._row, 'retryAt', final ? '' : Date.now() + RETRY_MS_);
   return { ok: true, final, _failed: final ? item : null };
 }
 
 // ── 관리(PC 키 필요) ─────────────────────────────────
-function aAdminIssue_(b) {
-  const member = String(b.member || '');
-  if (!member) return { ok: false, error: 'member' };
-  const tokens = jsonProp_('TOKENS');
-  const codes = jsonProp_('CODES');
-  const mails = jsonProp_('MAILS');
-  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  const code = Utilities.getUuid().replace(/-/g, '').slice(0, 8);
-  Object.keys(tokens).forEach((t) => { if (tokens[t] === member) delete tokens[t]; });
-  Object.keys(codes).forEach((c) => { if (tokens[codes[c]] === undefined) delete codes[c]; });
-  tokens[token] = member;
-  codes[code] = token;
-  if (b.email) mails[member] = String(b.email);
-  props_().setProperties({ TOKENS: JSON.stringify(tokens), CODES: JSON.stringify(codes), MAILS: JSON.stringify(mails) });
-  return { ok: true, token, code };
-}
-
-function aAdminRemove_(b) {
-  const tokens = jsonProp_('TOKENS');
-  const codes = jsonProp_('CODES');
-  const mails = jsonProp_('MAILS');
-  Object.keys(tokens).forEach((t) => { if (tokens[t] === b.member) delete tokens[t]; });
-  Object.keys(codes).forEach((c) => { if (!has_(tokens, codes[c])) delete codes[c]; });
-  delete mails[b.member];
-  props_().setProperties({ TOKENS: JSON.stringify(tokens), CODES: JSON.stringify(codes), MAILS: JSON.stringify(mails) });
-  return { ok: true };
-}
-
-// 개인 링크와 코드를 본인 메일로만 보낸다. 응답·로그에 남기지 않는다.
-function aAdminMailLink_(b) {
-  const issued = aAdminIssue_(b);
-  if (!issued.ok) return issued;
-  const to = jsonProp_('MAILS')[b.member];
-  if (!to) return { ok: false, error: 'mail' };
-  const app = props_().getProperty('APP_URL') || '';
-  MailApp.sendEmail({
-    to, subject: '[제이제이] 수퍼스타 만들기 내 링크', name: '제이제이 수퍼스타 만들기',
-    body: `내 전용 링크: ${app}?t=${issued.token}
-내 코드: ${issued.code}
-
-이 링크를 다른 사람에게 보내지 말아 주세요. 단톡방 링크로 들어갔을 때 코드를 묻으면 위 코드를 넣어 주세요.`
-  });
+function aAdminRetry_(b) {
+  const item = rows_('items').find((i) => i.id === b.id);
+  if (!item) return { ok: false, error: 'notfound' };
+  if (rows_('results').some((r) => r.id === b.id)) return { ok: false, error: 'done' };
+  setCell_('items', item._row, 'analysis', '대기');
+  setCell_('items', item._row, 'tries', 0);
+  setCell_('items', item._row, 'retryAt', '');
   return { ok: true };
 }
 
 function aAdminSet_(b) {
-  const allowed = ['APP_URL', 'MAIL_TEST'];
-  if (allowed.indexOf(b.key) < 0) return { ok: false, error: 'key' };
+  if (b.key !== 'APP_URL') return { ok: false, error: 'key' };
   props_().setProperty(b.key, String(b.value));
   return { ok: true };
 }
 
 function aAdminStatus_() {
-  return { ok: true, members: Object.keys(jsonProp_('TOKENS')).length, mails: rows_('mailLog').length, votes: rows_('votes').length, items: rows_('items').length, mailQuota: MailApp.getRemainingDailyQuota() };
+  return { ok: true, members: TEAM_.length, mails: rows_('mailLog').length, votes: rows_('votes').length, items: rows_('items').length, mailQuota: MailApp.getRemainingDailyQuota() };
 }
 
 function aAdminClear_(b) {
@@ -300,8 +271,10 @@ function aAdminClear_(b) {
   Object.keys(TABS_).forEach((k) => {
     const s = tab_(k);
     if (s.getLastRow() > 1) s.deleteRows(2, s.getLastRow() - 1);
+    s.getRange(1, 1, 1, TABS_[k].length).setValues([TABS_[k]]);
+    applyText_(k, s);
   });
-  props_().deleteProperty('LOGIN_FAILS');
+  ['TOKENS', 'CODES', 'MAILS', 'MAIL_TEST', 'LOGIN_FAILS'].forEach((k) => props_().deleteProperty(k));
   return { ok: true };
 }
 
@@ -309,11 +282,7 @@ function aAdminClear_(b) {
 function aBootstrap_() {
   if (props_().getProperty('SECRET')) return { ok: false, error: 'done' };
   const pcKey = Utilities.getUuid() + Utilities.getUuid();
-  props_().setProperties({
-    SECRET: Utilities.getUuid() + Utilities.getUuid(), PC_KEY: pcKey,
-    TOKENS: '{}', CODES: '{}', MAILS: '{}', MAIL_TEST: '1',
-    OWNER: Session.getEffectiveUser().getEmail()
-  });
+  props_().setProperties({ SECRET: Utilities.getUuid() + Utilities.getUuid(), PC_KEY: pcKey, OWNER: Session.getEffectiveUser().getEmail() });
   Object.keys(TABS_).forEach(tab_);
   return { ok: true, pcKey };
 }
@@ -321,46 +290,45 @@ function aBootstrap_() {
 const USER_ACTIONS_ = { list: aList_, add: aAdd_, vote: aVote_, item: aItem_ };
 const PC_ACTIONS_ = {
   pcPending: aPcPending_, pcThumb: aPcThumb_, pcResult: aPcResult_, pcFail: aPcFail_,
-  adminIssue: aAdminIssue_, adminMailLink: aAdminMailLink_, adminRemove: aAdminRemove_, adminSet: aAdminSet_, adminStatus: aAdminStatus_, adminClear: aAdminClear_
+  adminRetry: aAdminRetry_, adminSet: aAdminSet_, adminStatus: aAdminStatus_, adminClear: aAdminClear_
 };
-const NO_LOCK_ = { list: 1, item: 1, pcPending: 1, adminStatus: 1 };
+const NO_LOCK_ = { pick: 1, bootstrap: 1, list: 1, item: 1, pcPending: 1, adminStatus: 1 };
 
-function dispatch_(b) {
-  const a = b.action;
-  if (a === 'bootstrap') return aBootstrap_();
-  if (a === 'login') return aLogin_(b);
-  if (has_(USER_ACTIONS_, a)) return tokenOk_(b.token) ? USER_ACTIONS_[a](b) : { ok: false, error: 'token' };
-  if (has_(PC_ACTIONS_, a)) return pcOk_(b.pcKey) ? PC_ACTIONS_[a](b) : { ok: false, error: 'key' };
-  return { ok: false, error: 'action' };
+// 잠금을 잡기 전에 권한을 본다. 잘못된 요청이 진짜 투표를 기다리게 하지 않는다.
+function allowed_(b) {
+  if (has_(USER_ACTIONS_, b.action)) return memberOf_(b.token) ? null : 'token';
+  if (has_(PC_ACTIONS_, b.action)) return pcOk_(b.pcKey) ? null : 'key';
+  return b.action === 'bootstrap' || b.action === 'pick' ? null : 'action';
 }
 
-// 메일은 잠금을 푼 뒤 보낸다. 기록은 sendOnce_가 맡아 한 번만 나간다.
+function dispatch_(b) {
+  if (b.action === 'bootstrap') return aBootstrap_();
+  if (b.action === 'pick') return aPick_(b);
+  return has_(USER_ACTIONS_, b.action) ? USER_ACTIONS_[b.action](b) : PC_ACTIONS_[b.action](b);
+}
+
 function afterCommit_(out) {
   if (out.justProduced && out._item) {
     const it = out._item;
-    sendOnce_(`produced:${it.id}`, 'produced', () => sendAll_(`[제이제이] 제작 결정: ${it.line}`,
-      (link) => `좋아요 3개를 받아 제작으로 넘어갑니다.\n\n${it.line}\n${it.url}\n\n앱 열기: ${link}\n\nClaude 분석이 끝나면 다시 알려 드립니다.`));
+    sendOnce_(`produced:${it.id}`, 'produced', () => sendOwner_(`[제이제이] 제작 결정: ${it.line}`, `좋아요 3개를 받아 제작으로 넘어갑니다.\n\n${it.line}\n${it.url}\n\nClaude 분석이 끝나면 다시 알려 드립니다.`));
   }
   if (out._done) {
     const it = out._done;
-    sendOnce_(`done:${it.id}`, 'done', () => sendAll_(`[제이제이] 분석 완료: ${it.line}`,
-      (link) => `분석과 프롬프트가 나왔습니다.\n\n${it.line}\n\n앱 열기: ${link}`));
+    const unfit = it.fit === false;
+    sendOnce_(`done:${it.id}`, 'done', () => sendOwner_(`[제이제이] ${unfit ? '이 형식은 안 맞음' : '분석 완료'}: ${it.line}`, `${unfit ? '프롬프트 대신 맞지 않는 이유가 나왔습니다.' : '분석과 프롬프트가 나왔습니다.'}\n\n${it.line}`));
   }
   if (out._failed) {
     const it = out._failed;
-    const owner = props_().getProperty('OWNER');
-    sendOnce_(`failed:${it.id}`, 'failed', () => MailApp.sendEmail({
-      to: owner, subject: `[제이제이] 분석 실패: ${it.line}`,
-      body: `분석을 ${MAX_TRIES_}번 시도했지만 실패했습니다.\n\n${it.line}\n${it.url}`, name: '제이제이 수퍼스타 만들기'
-    }));
+    sendOnce_(`failed:${it.id}`, 'failed', () => sendOwner_(`[제이제이] 분석 실패: ${it.line}`, `분석하지 못했습니다. 영상이 삭제됐거나 분석 프로그램에 문제가 있을 수 있습니다.\n\n${it.line}\n${it.url}`));
   }
-  ['_item', '_done', '_failed'].forEach((k) => delete out[k]);
-  return out;
 }
 
 function doPost(e) {
   let b;
   try { b = JSON.parse(e.postData.contents); } catch (err) { return reply_({ ok: false, error: 'json' }); }
+  if (!b || typeof b !== 'object') return reply_({ ok: false, error: 'json' });
+  const denied = allowed_(b);
+  if (denied) return reply_({ ok: false, error: denied });
   let out;
   const lock = NO_LOCK_[b.action] ? null : LockService.getScriptLock();
   try {
@@ -375,16 +343,15 @@ function doPost(e) {
     if (lock) { try { lock.releaseLock(); } catch (x) { /* 잠금을 못 잡았을 때 */ } }
   }
   try {
-    // 메일 기록을 동시에 쓰지 않게 잠근다.
     if (out.justProduced || out._done || out._failed) {
       const mailLock = LockService.getScriptLock();
       mailLock.waitLock(20000);
-      try { afterCommit_(out); } finally { mailLock.releaseLock(); }
+      try { afterCommit_(out); SpreadsheetApp.flush(); } finally { mailLock.releaseLock(); }
     }
   } catch (err) {
-    console.error(String(err && err.message));
-    ['_item', '_done', '_failed'].forEach((k) => delete out[k]);
+    console.error('메일 실패');
   }
+  ['_item', '_done', '_failed'].forEach((k) => delete out[k]);
   return reply_(out);
 }
 

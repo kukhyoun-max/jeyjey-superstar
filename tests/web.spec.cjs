@@ -36,7 +36,7 @@ async function open(handlers, { hash = '', token = 'tok', query = '' } = {}) {
     const out = typeof h === 'function' ? await h(b) : h;
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(out || { ok: false, error: 'action' }) });
   });
-  await ctx.route(/youtube\.com\/embed|instagram\.com|tiktok\.com\/embed/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>영상</p>' }));
+  await ctx.route(/youtube\.com\/embed|instagram\.com|tiktok\.com\/player/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>영상</p>' }));
   await ctx.route(/fonts\.g/, (r) => r.abort());
   const page = await ctx.newPage();
   if (token) await page.addInitScript((t) => { if (!localStorage.getItem('jj_token')) localStorage.setItem('jj_token', t); }, token);
@@ -44,44 +44,47 @@ async function open(handlers, { hash = '', token = 'tok', query = '' } = {}) {
   return { page, calls, ctx };
 }
 
-test('토큰이 없으면 내 코드 화면이고 목록을 부르지 않는다', async () => {
+test('이름을 안 골랐으면 이름 화면이고 목록을 부르지 않는다', async () => {
   const { page, calls, ctx } = await open({}, { token: null });
-  await page.getByRole('heading', { name: '내 코드' }).waitFor();
+  await page.getByRole('heading', { name: '누구세요?' }).waitFor();
+  for (const n of ['국현', '하영', '산하', '민우', '실장님']) await page.getByRole('button', { name: n, exact: true }).waitFor();
   assert.equal(calls.filter((c) => c.action === 'list').length, 0);
   await ctx.close();
 });
-
-test('코드를 넣으면 로그인하고 첫 화면으로 간다', async () => {
-  const { page, ctx } = await open({ login: { ok: true, token: 'new' }, list: { ok: true, cards: [], todo: 0 } }, { token: null });
-  await page.getByLabel('내 코드').fill('abcd1234');
-  await page.getByRole('button', { name: '들어가기' }).click();
+test('이름을 고르면 기억하고 첫 화면으로 간다', async () => {
+  const { page, calls, ctx } = await open({ pick: { ok: true, token: 'new', name: '하영' }, list: { ok: true, cards: [], todo: 0 } }, { token: null });
+  await page.getByRole('button', { name: '하영', exact: true }).click();
   await page.getByRole('heading', { name: /수퍼스타/ }).waitFor();
   assert.equal(await page.evaluate(() => localStorage.getItem('jj_token')), 'new');
+  assert.equal(calls.find((c) => c.action === 'pick').name, '하영');
+  await page.getByText('하영').first().waitFor();
   await ctx.close();
 });
 
-test('틀린 코드와 잠금을 안내한다', async () => {
-  const { page, ctx } = await open({ login: { ok: false, error: 'locked' } }, { token: null });
-  await page.getByLabel('내 코드').fill('x');
-  await page.getByRole('button', { name: '들어가기' }).click();
-  await page.getByText('15분').waitFor();
+test('첫 화면에서 이름을 바꿀 수 있다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 } });
+  await page.getByRole('button', { name: '이름 바꾸기' }).click();
+  await page.getByRole('heading', { name: '누구세요?' }).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('jj_token')), null);
   await ctx.close();
 });
-
-test('주소의 토큰은 저장하고 주소에서 지운다', async () => {
-  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 } }, { token: null, query: '?t=abc123' });
-  await page.getByRole('heading', { name: /수퍼스타/ }).waitFor();
-  assert.equal(await page.evaluate(() => localStorage.getItem('jj_token')), 'abc123');
-  assert.equal(page.url().includes('abc123'), false);
+test('이름을 고르지 못하면 안내한다', async () => {
+  const { page, ctx } = await open({ pick: { ok: false, error: 'server' } }, { token: null });
+  await page.getByRole('button', { name: '민우', exact: true }).click();
+  await page.getByText('다시 눌러 주세요').waitFor();
   await ctx.close();
 });
-
-test('서버가 토큰을 거부하면 내 코드 화면으로 돌아간다', async () => {
+test('공유 주소로 열어도 토큰을 주소에 남기지 않는다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 } }, { token: null, query: '?x=1' });
+  await page.getByRole('heading', { name: '누구세요?' }).waitFor();
+  assert.equal(page.url().includes('tok'), false);
+  await ctx.close();
+});
+test('서버가 토큰을 거부하면 이름 화면으로 돌아간다', async () => {
   const { page, ctx } = await open({ list: { ok: false, error: 'token' } });
-  await page.getByRole('heading', { name: '내 코드' }).waitFor();
+  await page.getByRole('heading', { name: '누구세요?' }).waitFor();
   await ctx.close();
 });
-
 test('첫 화면에 타이틀과 버튼, 내가 안 한 수가 있다', async () => {
   const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 2 } });
   await page.getByRole('button', { name: '찾은 영상 붙여넣기' }).waitFor();
@@ -422,5 +425,36 @@ test('목록, 투표, 결과 화면에서 처음으로 돌아갈 수 있다', as
 test('영상을 보지 않은 분석이면 결과에 그렇게 표시한다', async () => {
   const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 }, item: { ok: true, card: CARD({ word: '제작', analysis: '완료' }), result: { ...RES, seenVideo: false } } }, { hash: '#/result/a' });
   await page.getByText('영상을 직접 보지 않고').waitFor();
+  await ctx.close();
+});
+
+test('자동으로 넘어가는 순간 누른 표는 다음 영상에 들어간다', async () => {
+  const cards = [CARD({ id: 'a', line: '첫째' }), CARD({ id: 'b', line: '둘째', videoId: 'YojzkmCrcmw' })];
+  const { page, calls, ctx } = await open({
+    list: { ok: true, cards, todo: 2 },
+    vote: (x) => ({ ok: true, card: CARD({ id: x.id, word: '완료', myVote: 'like', likes: 1, nos: 0 }) })
+  }, { hash: '#/vote/a' });
+  await page.addStyleTag({ content: '.feed{scroll-behavior:auto!important}' });
+  await page.getByRole('button', { name: '좋아요' }).click();
+  await page.locator('.done-msg').waitFor();
+  await page.locator('.acts').waitFor({ timeout: 3000 }); // 버튼이 돌아온 바로 그때 누른다
+  await page.evaluate(() => [...document.querySelectorAll('.acts button')].find((b) => b.textContent === '좋아요').click());
+  await page.waitForFunction(() => document.querySelectorAll('.stamp').length >= 1);
+  await page.waitForTimeout(200);
+  const votes = calls.filter((c) => c.action === 'vote').map((c) => c.id);
+  assert.deepEqual(votes, ['a', 'b']);
+  await ctx.close();
+});
+
+test('인스타 재생 중 위로 되돌리면 지나간 영상을 다시 불러 소리를 멈춘다', async () => {
+  const cards = ['a', 'b'].map((id, i) => CARD({ id, line: id, platform: 'instagram', videoId: `ig${i}`, url: `https://www.instagram.com/reel/ig${i}/` }));
+  const { page, ctx } = await open({ list: { ok: true, cards, todo: 2 } }, { hash: '#/vote/a' });
+  await page.waitForFunction(() => document.querySelectorAll('.feed iframe').length === 2);
+  await page.locator('.feed').evaluate((n) => n.scrollTo(0, n.clientHeight));
+  await page.locator('.below').getByText('b', { exact: true }).waitFor();
+  await page.evaluate(() => { document.querySelector('.slide.current iframe').dataset.playing = '1'; });
+  await page.locator('.feed').evaluate((n) => n.scrollTo(0, 0));
+  await page.locator('.below').getByText('a', { exact: true }).waitFor();
+  assert.equal(await page.locator('iframe[data-playing]').count(), 0);
   await ctx.close();
 });
