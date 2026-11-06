@@ -407,3 +407,14 @@ test('영상 양옆도 넘기기 구역이다', async () => {
   assert.equal(right, 'swipe-zone right');
   await ctx.close();
 });
+
+test('목록, 투표, 결과 화면에서 처음으로 돌아갈 수 있다', async () => {
+  for (const [hash, item] of [['#/list', null], ['#/vote/a', null], ['#/result/a', { ok: true, card: CARD({ word: '제작', analysis: '대기' }) }]]) {
+    const { page, ctx } = await open({ list: { ok: true, cards: [CARD()], todo: 1 }, item }, { hash });
+    const link = page.getByRole('link', { name: /처음으로/ });
+    await link.waitFor();
+    await link.click();
+    await page.getByRole('heading', { name: /수퍼스타/ }).waitFor();
+    await ctx.close();
+  }
+});

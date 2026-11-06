@@ -224,7 +224,7 @@ async function renderList() {
   const bOne = switchBtn('한 줄에 하나', !two, ICON_ONE, () => setView(false));
   const bTwo = switchBtn('한 줄에 둘', two, ICON_TWO, () => setView(true));
   show(el('header', { class: 'top' },
-    el('a', { class: 'home-link', href: '#/', style: 'padding:0' }, el('h1', { class: 'ttl display' }, '투표 목록', small)),
+    el('div', { class: 'head-left' }, el('a', { class: 'to-home', href: '#/' }, '‹ 처음으로'), el('h1', { class: 'ttl display' }, '투표 목록', small)),
     el('div', { class: 'sw' }, bOne, bTwo)), grid);
   try {
     const r = await api('list');
@@ -364,7 +364,7 @@ async function renderVote(id) {
   show(el('section', { class: 'vote' },
     feed,
     el('div', { class: 'over' },
-      el('header', { class: 'top' }, el('a', { href: '#/list' }, '‹ 목록'), mineEl),
+      el('header', { class: 'top' }, el('nav', { class: 'navs' }, el('a', { href: '#/list' }, '‹ 목록'), el('a', { href: '#/' }, '처음으로')), mineEl),
       el('div', { class: 'over-low' }, below, bottomHolder))));
 
   const seen = new IntersectionObserver((list) => {
@@ -399,7 +399,7 @@ async function renderResult(id) {
   const c = r.card;
   if (c.word !== '제작') { location.replace(`#/vote/${id}`); return; }
   const res = r.result;
-  const head = [el('header', { class: 'top' }, el('a', { href: '#/list' }, '‹ 목록'), el('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer' }, '원본 영상 보기')), ];
+  const head = [el('header', { class: 'top' }, el('nav', { class: 'navs' }, el('a', { href: '#/list' }, '‹ 목록'), el('a', { href: '#/' }, '처음으로')), el('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer' }, '원본 영상 보기')), ];
   const title = el('h1', { class: 'display' }, c.line);
   let body;
   if (!res && c.analysis === '실패') {
