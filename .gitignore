@@ -1,0 +1,4 @@
+.superpowers/
+.clasp.json
+*.key
+node_modules/
