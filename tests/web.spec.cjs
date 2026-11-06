@@ -262,3 +262,35 @@ test('투표 직후 영상을 빼서 소리를 멈춘다', async () => {
   assert.equal(await page.locator('iframe').count(), 0);
   await ctx.close();
 });
+
+test('인스타는 임베드 여백을 잘라 9:16으로 보여 주고 버튼은 화면 안에 있다', async () => {
+  const ig = CARD({ platform: 'instagram', videoId: 'De_m5HoTw7A', url: 'https://www.instagram.com/reel/De_m5HoTw7A/' });
+  const { page, ctx } = await open({ list: { ok: true, cards: [ig], todo: 1 }, item: { ok: true, card: ig } }, { hash: '#/vote/a' });
+  await page.locator('.frame.ig iframe').waitFor();
+  const f = await page.locator('.frame').boundingBox();
+  const i = await page.locator('.frame iframe').boundingBox();
+  assert.ok(Math.abs(f.width / f.height - 9 / 16) < 0.01, `틀 비율 ${f.width / f.height}`);
+  assert.ok(Math.abs(i.width / f.width - 1.4222) < 0.01, `임베드 폭 ${i.width / f.width}`);
+  assert.ok(Math.abs(i.y - (f.y - 54)) < 1, '머리 54px 밀기');
+  const b = await page.getByRole('button', { name: '좋아요' }).boundingBox();
+  assert.ok(b.y + b.height <= 844);
+  await ctx.close();
+});
+
+test('좋아요 뒤 다음 영상이 다시 불러오지 않고 위로 올라온다', async () => {
+  const cards = [CARD({ id: 'a' }), CARD({ id: 'b', line: '둘째', videoId: 'YojzkmCrcmw' })];
+  const { page, calls, ctx } = await open({
+    list: { ok: true, cards, todo: 2 },
+    item: (x) => ({ ok: true, card: cards.find((c) => c.id === x.id) }),
+    vote: { ok: true, card: CARD({ word: '완료', myVote: 'like', likes: 1, nos: 0 }) }
+  }, { hash: '#/vote/a' });
+  // 짧은 전환을 놓치지 않게 시험에서만 느리게 한다.
+  await page.addStyleTag({ content: '.vote.rise,.vote.leave{animation-duration:1.5s!important}' });
+  await page.getByRole('button', { name: '좋아요' }).click();
+  await page.locator('.vote.rise').waitFor({ timeout: 4000, state: 'attached' });
+  assert.ok((await page.locator('.vote.rise iframe').getAttribute('src')).includes('YojzkmCrcmw'));
+  assert.equal(calls.filter((c) => c.action === 'item' && c.id === 'b').length, 0);
+  await page.locator('.vote.leave').waitFor({ state: 'detached', timeout: 3000 });
+  await page.getByText('둘째').waitFor();
+  await ctx.close();
+});

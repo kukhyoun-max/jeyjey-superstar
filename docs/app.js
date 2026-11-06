@@ -2,7 +2,8 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbwrkeySSxJfPPCwZl0FU8-LT_w86KmjjevHFfDbcsWOJzlTNTJls-mY-p7J8aX6-vszNA/exec';
 const APP_URL = 'https://kukhyoun-max.github.io/jeyjey-superstar/';
 const PLATFORM_NAME = { instagram: '인스타', youtube: '유튜브', tiktok: '틱톡' };
-const NEXT_DELAY_MS = 1600;
+const NEXT_DELAY_MS = 900;
+let pendingNext = null; // 투표 뒤 바로 보여 줄 다음 카드
 
 const app = document.getElementById('app');
 const mem = {};
@@ -201,26 +202,45 @@ function starsNode(likes) {
 }
 
 function frameNode(c) {
-  const box = el('div', { class: 'frame' });
+  const box = el('div', { class: `frame${c.platform === 'instagram' ? ' ig' : ''}` });
   const e = embedFor({ platform: c.platform, id: String(c.videoId), url: c.url });
   if (e) box.append(el('iframe', { src: e.src, title: c.line, allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: 'allowfullscreen' }));
   return box;
 }
 
-async function nextAfter(id) {
+// 표를 넣자마자 목록을 미리 받아 두고, 도장을 보여 준 뒤 다음 영상으로 넘긴다.
+async function nextAfter(id, listPromise) {
   try {
-    const r = await api('list');
+    const r = await listPromise;
     const next = r.ok && r.cards.find((c) => c.word === '투표' && c.id !== id);
-    go(next ? `#/vote/${next.id}` : '#/list');
+    if (next) { pendingNext = next; go(`#/vote/${next.id}`); return; }
+    go('#/list');
   } catch (e) { go('#/list'); }
 }
 
+// 릴스처럼 지금 화면이 위로 나가고 다음 영상이 아래에서 올라온다.
+function riseIn(section) {
+  const old = app.querySelector('.vote');
+  if (!old) { show(section); return; }
+  const finish = () => { old.remove(); section.classList.remove('rise'); };
+  old.classList.add('leave');
+  section.classList.add('rise');
+  app.append(section);
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+  section.addEventListener('animationend', finish, { once: true });
+}
+
 async function renderVote(id) {
-  show(el('div', { class: 'empty' }, '불러오는 중입니다.'));
-  let r;
-  try { r = await api('item', { id }); } catch (e) { if (e.message !== 'token') show(retryBox(() => renderVote(id))); return; }
-  if (!r.ok) { show(retryBox(() => renderVote(id))); return; }
-  const c = r.card;
+  const ready = pendingNext && pendingNext.id === id ? pendingNext : null;
+  pendingNext = null;
+  let c = ready;
+  if (!c) {
+    show(el('div', { class: 'empty' }, '불러오는 중입니다.'));
+    let r;
+    try { r = await api('item', { id }); } catch (e) { if (e.message !== 'token') show(retryBox(() => renderVote(id))); return; }
+    if (!r.ok) { show(retryBox(() => renderVote(id))); return; }
+    c = r.card;
+  }
   if (c.word === '제작') { location.replace(`#/result/${id}`); return; }
   const frame = frameNode(c);
   const original = el('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer' }, '원본 영상 보기');
@@ -244,7 +264,8 @@ async function renderVote(id) {
         : word === '탈락' ? '아니에요 3개로 탈락했습니다.'
           : v.card.likes === 2 ? '별 하나만 더 받으면 제작입니다.' : '내 표를 넣었습니다.';
       bottom.replaceWith(el('div', { class: 'done-msg' }, starsNode(v.card.likes), el('p', { role: 'status' }, text)));
-      setTimeout(() => (v.justProduced ? go(`#/result/${id}`) : nextAfter(id)), NEXT_DELAY_MS);
+      const listing = v.justProduced ? null : api('list');
+      setTimeout(() => (v.justProduced ? go(`#/result/${id}`) : nextAfter(id, listing)), v.justProduced ? 1600 : NEXT_DELAY_MS);
     } catch (e) {
       if (e.message === 'token') return;
       busy = false;
@@ -257,11 +278,12 @@ async function renderVote(id) {
     el('button', { class: 'no', 'aria-pressed': c.myVote === 'no' ? 'true' : 'false', on: { click: () => vote('no') } }, '아니에요'),
     el('button', { class: 'yes', 'aria-pressed': c.myVote === 'like' ? 'true' : 'false', on: { click: () => vote('like') } }, '좋아요'));
 
-  show(el('section', { class: 'vote' },
+  const section = el('section', { class: 'vote' },
     el('header', { class: 'top' }, el('a', { href: '#/list' }, '‹ 목록'), mine ? el('span', { class: 'count' }, mine) : null),
-    frame,
+    el('div', { class: 'stage' }, frame),
     el('div', { class: 'below' }, el('div', { class: 't' }, c.line), el('div', { class: 'sub' }, el('span', null, PLATFORM_NAME[c.platform]), original)),
-    bottom));
+    bottom);
+  if (ready) riseIn(section); else show(section);
 }
 
 // ── 결과 ─────────────────────────────────────────
