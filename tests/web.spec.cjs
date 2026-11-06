@@ -217,7 +217,8 @@ test('세 번째 좋아요면 제작 도장이 나온다', async () => {
   }, { hash: '#/vote/a' });
   await page.getByRole('button', { name: '좋아요' }).click();
   await page.locator('.stamp', { hasText: '제작' }).waitFor();
-  await page.getByText('분석을 시작합니다').waitFor();
+  await page.getByText('제작으로 넘어갑니다').waitFor();
+  assert.equal(await page.getByText('분석을 시작합니다').count(), 0);
   await ctx.close();
 });
 
@@ -273,7 +274,8 @@ test('안 맞는 형식과 분석 중, 실패를 표시한다', async () => {
   await r.page.getByText('전주대 요소로 바꾸기 어려움').waitFor();
   await r.ctx.close();
   r = await open({ list: { ok: true, cards: [], todo: 0 }, item: { ok: true, card: CARD({ word: '제작', analysis: '대기' }) } }, { hash: '#/result/a' });
-  await r.page.getByText('분석 중').waitFor();
+  await r.page.getByText('분석 보류').waitFor();
+  assert.equal(await r.page.getByText('메일').count(), 0);
   await r.ctx.close();
   r = await open({ list: { ok: true, cards: [], todo: 0 }, item: { ok: true, card: CARD({ word: '제작', analysis: '실패' }) } }, { hash: '#/result/a' });
   await r.page.getByText('분석 실패').waitFor();

@@ -347,7 +347,7 @@ async function renderVote(id) {
       const word = v.justProduced ? '제작' : v.card.word;
       s0.card = { ...s0.card, myVote: value, word };
       s0.box.replaceChildren(el('span', { class: `stamp hit w-${word}` }, word));
-      const text = v.justProduced ? '내 표로 3개가 찼습니다. Claude가 분석을 시작합니다.'
+      const text = v.justProduced ? '내 표로 3개가 찼습니다. 제작으로 넘어갑니다.'
         : word === '탈락' ? '아니에요 3개로 탈락했습니다.'
           : v.card.likes === 2 ? '별 하나만 더 받으면 제작입니다.' : '내 표를 넣었습니다.';
       bottomHolder.replaceChildren(el('div', { class: 'done-msg' }, starsNode(v.card.likes), el('p', { role: 'status' }, text)));
@@ -411,7 +411,7 @@ async function renderResult(id) {
   if (!res && c.analysis === '실패') {
     body = el('div', { class: 'msg-box' }, el('span', { class: 'display' }, '분석 실패'), el('p', null, '이 영상을 분석하지 못했습니다. 담당자가 확인합니다.'));
   } else if (!res) {
-    body = el('div', { class: 'msg-box' }, el('span', { class: 'display' }, '분석 중'), el('p', null, '끝나면 메일로 알려 드립니다. PC가 꺼져 있으면 다음에 켤 때 이어서 합니다.'));
+    body = el('div', { class: 'msg-box' }, el('span', { class: 'display' }, '분석 보류'), el('p', null, '좋아요 3개를 받았습니다. 지금은 자동 분석을 멈춰 두었습니다.'));
   } else if (res.fit === false) {
     body = el('div', { class: 'sec' }, el('h2', null, '이 형식은 안 맞음'), el('p', null, String(res.reason || '')));
   } else {

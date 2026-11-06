@@ -85,7 +85,11 @@ function pcOk_(key) {
 }
 
 // ── 메일(담당자에게만) ───────────────────────────────
+// 담당자 결정(2026-11-06): 알림 메일을 보내지 않는다. 다시 켜려면 true로 바꾼다.
+const MAIL_ON_ = false;
+
 function sendOwner_(subject, body) {
+  if (!MAIL_ON_) return;
   MailApp.sendEmail({ to: props_().getProperty('OWNER'), subject, body: `${body}\n\n앱 열기: ${props_().getProperty('APP_URL') || ''}`, name: '제이제이 수퍼스타 만들기' });
 }
 
