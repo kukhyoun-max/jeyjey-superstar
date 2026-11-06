@@ -111,3 +111,19 @@ test('내 표 없는 진행 카드가 먼저, 탈락이 맨 뒤다', () => {
   ]).map((c) => c.id);
   assert.deepEqual(r, ['투', '완', '제', '탈']);
 });
+
+test('한 줄 설명은 앞뒤 공백을 지우고, 비었거나 80자를 넘으면 null이다', () => {
+  assert.equal(L.cleanLine('  학식 경주  '), '학식 경주');
+  assert.equal(L.cleanLine('   '), null);
+  assert.equal(L.cleanLine(null), null);
+  assert.equal(L.cleanLine('가'.repeat(81)), null);
+  assert.equal(L.cleanLine('줄\n바꿈'), '줄 바꿈');
+});
+
+test('시트에 수식으로 들어갈 수 있는 글은 앞에 작은따옴표를 붙인다', () => {
+  assert.equal(L.safeCell('=IMPORTXML("x")'), "'=IMPORTXML(\"x\")");
+  assert.equal(L.safeCell('+1'), "'+1");
+  assert.equal(L.safeCell('-1'), "'-1");
+  assert.equal(L.safeCell('@a'), "'@a");
+  assert.equal(L.safeCell('학식'), '학식');
+});

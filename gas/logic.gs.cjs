@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const code = fs.readFileSync(path.join(__dirname, 'logic.gs'), 'utf8');
-const names = ['parseLink', 'tally', 'itemStatus', 'cardWord', 'canVote', 'shouldProduce', 'publicView', 'sortCards'];
+const names = ['parseLink', 'tally', 'itemStatus', 'cardWord', 'canVote', 'shouldProduce', 'publicView', 'sortCards', 'cleanLine', 'safeCell'];
 const box = {};
 vm.runInNewContext(`${code}\nthis.out={${names.join(',')}};`, box);
 // 시험의 deepEqual이 다른 실행 공간의 객체를 비교할 수 있게 JSON으로 옮긴다.

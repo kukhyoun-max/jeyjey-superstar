@@ -71,7 +71,17 @@ function publicView(item, t, myVote, produced) {
   return view;
 }
 
-const CARD_ORDER_ = { 투표: 0, 완료: 1, 제작: 2, 탈락: 3 };
+function cleanLine(raw) {
+  const s = String(raw === null || raw === undefined ? '' : raw).replace(/\s+/g, ' ').trim();
+  return s && s.length <= 80 ? s : null;
+}
+
+// 사용자가 쓴 글이 시트 수식으로 실행되지 않게 한다.
+function safeCell(s) {
+  return /^[=+\-@]/.test(s) ? `'${s}` : s;
+}
+
+const CARD_ORDER_ ={ 투표: 0, 완료: 1, 제작: 2, 탈락: 3 };
 
 function sortCards(cards) {
   return cards.slice().sort((a, b) => (CARD_ORDER_[a.word] - CARD_ORDER_[b.word]) || (b.createdAt - a.createdAt));
