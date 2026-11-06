@@ -267,6 +267,23 @@ function aAdminRemove_(b) {
   return { ok: true };
 }
 
+// 개인 링크와 코드를 본인 메일로만 보낸다. 응답·로그에 남기지 않는다.
+function aAdminMailLink_(b) {
+  const issued = aAdminIssue_(b);
+  if (!issued.ok) return issued;
+  const to = jsonProp_('MAILS')[b.member];
+  if (!to) return { ok: false, error: 'mail' };
+  const app = props_().getProperty('APP_URL') || '';
+  MailApp.sendEmail({
+    to, subject: '[제이제이] 수퍼스타 만들기 내 링크', name: '제이제이 수퍼스타 만들기',
+    body: `내 전용 링크: ${app}?t=${issued.token}
+내 코드: ${issued.code}
+
+이 링크를 다른 사람에게 보내지 말아 주세요. 단톡방 링크로 들어갔을 때 코드를 묻으면 위 코드를 넣어 주세요.`
+  });
+  return { ok: true };
+}
+
 function aAdminSet_(b) {
   const allowed = ['APP_URL', 'MAIL_TEST'];
   if (allowed.indexOf(b.key) < 0) return { ok: false, error: 'key' };
@@ -304,7 +321,7 @@ function aBootstrap_() {
 const USER_ACTIONS_ = { list: aList_, add: aAdd_, vote: aVote_, item: aItem_ };
 const PC_ACTIONS_ = {
   pcPending: aPcPending_, pcThumb: aPcThumb_, pcResult: aPcResult_, pcFail: aPcFail_,
-  adminIssue: aAdminIssue_, adminRemove: aAdminRemove_, adminSet: aAdminSet_, adminStatus: aAdminStatus_, adminClear: aAdminClear_
+  adminIssue: aAdminIssue_, adminMailLink: aAdminMailLink_, adminRemove: aAdminRemove_, adminSet: aAdminSet_, adminStatus: aAdminStatus_, adminClear: aAdminClear_
 };
 const NO_LOCK_ = { list: 1, item: 1, pcPending: 1, adminStatus: 1 };
 
