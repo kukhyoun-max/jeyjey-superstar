@@ -85,7 +85,15 @@ async function pasteLink() {
 
 function renderHome() {
   const badge = el('span', { class: 'badge', hidden: 'hidden' });
-  const voteLink = el('a', { class: 'btn w', href: '#/list' }, '투표하기', badge);
+  const listed = api('list').catch(() => null); // 배지와 투표하기가 같은 응답을 쓴다.
+  // 투표할 영상이 있으면 투표 화면으로, 없거나 못 받았으면 목록으로 간다.
+  const voteLink = el('a', { class: 'btn w', href: '#/list', on: { click: async (e) => {
+    e.preventDefault();
+    voteLink.classList.add('busy');
+    const r = await listed;
+    const first = r && r.ok ? r.cards.find((c) => c.word === '투표') : null;
+    go(first ? `#/vote/${first.id}` : '#/list');
+  } } }, '투표하기', badge);
   const name = store.get('jj_name');
   const who = el('div', { class: 'who' }, name ? el('span', null, name) : null,
     el('button', { type: 'button', on: { click: () => { store.del('jj_token'); store.del('jj_name'); renderPick(); } } }, '이름 바꾸기'));
@@ -94,9 +102,9 @@ function renderHome() {
     el('h1', { class: 'display' }, '제이제이 ', el('span', null, '수퍼스타'), el('br'), '만들기 프로젝트'),
     el('div', { class: 'btns' }, el('button', { class: 'btn y', on: { click: pasteLink } }, '찾은 영상 붙여넣기'), voteLink),
     el('div', { class: 'cast' }, el('img', { src: 'home-cast.webp', alt: '' }))));
-  api('list').then((r) => {
-    if (r.ok && r.todo > 0) { badge.textContent = String(r.todo); badge.removeAttribute('hidden'); }
-  }).catch(() => {});
+  listed.then((r) => {
+    if (r && r.ok && r.todo > 0) { badge.textContent = String(r.todo); badge.removeAttribute('hidden'); }
+  });
 }
 
 // ── 등록 ─────────────────────────────────────────

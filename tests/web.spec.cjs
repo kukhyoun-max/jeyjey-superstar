@@ -656,3 +656,37 @@ for (const [w, h] of [[390, 844], [363, 600], [430, 932]]) {
     await ctx.close();
   });
 }
+
+test('투표하기: 투표할 영상이 있으면 첫 영상의 투표 화면으로 바로 간다', async () => {
+  const cards = [CARD({ id: 'c', word: '제작' }), CARD({ id: 'a' }), CARD({ id: 'b' })];
+  const { page, ctx } = await open({ list: { ok: true, cards, todo: 2 } }, { hash: '#/' });
+  await page.getByRole('link', { name: /투표하기/ }).click();
+  await page.waitForURL(/#\/vote\/a/);
+  await page.locator('.slide').first().waitFor();
+  await ctx.close();
+});
+
+test('투표하기: 투표할 영상이 없으면 목록으로 간다', async () => {
+  const cards = [CARD({ id: 'c', word: '제작' }), CARD({ id: 'b', word: '완료', myVote: 'like', likes: 1, nos: 0 })];
+  const { page, ctx } = await open({ list: { ok: true, cards, todo: 0 } }, { hash: '#/' });
+  await page.getByRole('link', { name: /투표하기/ }).click();
+  await page.waitForURL(/#\/list/);
+  await page.locator('#grid .card').first().waitFor();
+  await ctx.close();
+});
+
+test('투표하기: 영상 정보를 아직 받는 중에 눌러도 투표 화면으로 간다', async () => {
+  const list = async () => { await new Promise((r) => setTimeout(r, 500)); return { ok: true, cards: [CARD({ id: 'a' })], todo: 1 }; };
+  const { page, ctx } = await open({ list }, { hash: '#/' });
+  await page.getByRole('link', { name: /투표하기/ }).click();
+  assert.equal(await page.locator('.home .btn.w.busy').count(), 1);
+  await page.waitForURL(/#\/vote\/a/);
+  await ctx.close();
+});
+
+test('투표하기: 영상 정보를 못 받으면 목록으로 가서 다시 시도하게 한다', async () => {
+  const { page, ctx } = await open({ list: { ok: false, error: 'server' } }, { hash: '#/' });
+  await page.getByRole('link', { name: /투표하기/ }).click();
+  await page.waitForURL(/#\/list/);
+  await ctx.close();
+});
