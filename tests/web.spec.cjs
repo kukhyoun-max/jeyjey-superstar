@@ -25,7 +25,7 @@ test.after(async () => { await browser.close(); server.close(); });
 
 const CARD = (o) => ({ id: 'a', url: 'https://www.youtube.com/watch?v=p6kY8-yTCwA', platform: 'youtube', videoId: 'p6kY8-yTCwA', line: '학식 경주', account: '계정', title: '', thumbUrl: '', createdAt: 1, analysis: '', word: '투표', myVote: null, ...o });
 
-async function open(handlers, { hash = '', token = 'tok', query = '' } = {}) {
+async function open(handlers, { hash = '', token = 'tok', query = '', name = '하영' } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.slice(0, -1) });
   const calls = [];
@@ -39,7 +39,7 @@ async function open(handlers, { hash = '', token = 'tok', query = '' } = {}) {
   await ctx.route(/youtube\.com\/embed|instagram\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>영상</p>' }));
   await ctx.route(/fonts\.g/, (r) => r.abort());
   const page = await ctx.newPage();
-  if (token) await page.addInitScript((t) => { if (!localStorage.getItem('jj_token')) localStorage.setItem('jj_token', t); }, token);
+  if (token) await page.addInitScript(([t, n]) => { if (!localStorage.getItem('jj_token')) { localStorage.setItem('jj_token', t); localStorage.setItem('jj_name', n); } }, [token, name]);
   await page.goto(`${base}${query}${hash}`);
   return { page, calls, ctx };
 }
@@ -268,17 +268,11 @@ test('결과 화면은 프롬프트를 복사한다', async () => {
   await ctx.close();
 });
 
-test('안 맞는 형식과 분석 중, 실패를 표시한다', async () => {
+test('예전 분석 결과가 있으면 제작 칸 아래에 그대로 보여 준다', async () => {
   let r = await open({ list: { ok: true, cards: [], todo: 0 }, item: { ok: true, card: CARD({ word: '제작', analysis: '완료' }), result: { fit: false, reason: '전주대 요소로 바꾸기 어려움' } } }, { hash: '#/result/a' });
   await r.page.getByText('이 형식은 안 맞음').waitFor();
   await r.page.getByText('전주대 요소로 바꾸기 어려움').waitFor();
-  await r.ctx.close();
-  r = await open({ list: { ok: true, cards: [], todo: 0 }, item: { ok: true, card: CARD({ word: '제작', analysis: '대기' }) } }, { hash: '#/result/a' });
-  await r.page.getByText('분석 보류').waitFor();
-  assert.equal(await r.page.getByText('메일').count(), 0);
-  await r.ctx.close();
-  r = await open({ list: { ok: true, cards: [], todo: 0 }, item: { ok: true, card: CARD({ word: '제작', analysis: '실패' }) } }, { hash: '#/result/a' });
-  await r.page.getByText('분석 실패').waitFor();
+  await r.page.getByRole('heading', { name: '제이제이 버전' }).waitFor();
   await r.ctx.close();
 });
 
@@ -458,5 +452,114 @@ test('인스타 재생 중 위로 되돌리면 지나간 영상을 다시 불러
   await page.locator('.feed').evaluate((n) => n.scrollTo(0, 0));
   await page.locator('.below').getByText('a', { exact: true }).waitFor();
   assert.equal(await page.locator('iframe[data-playing]').count(), 0);
+  await ctx.close();
+});
+
+// ── 제작·발행 ─────────────────────────────────────
+const MADE = (o) => CARD({ word: '제작', likes: 3, nos: 0, maker: '', idea: '', publishedUrl: '', ...o });
+const itemOf = (card) => ({ list: { ok: true, cards: [card], todo: 0 }, item: { ok: true, card } });
+
+test('제작 화면에 분석 안내가 없고, 맡은 사람이 없으면 그렇게 표시한다', async () => {
+  const { page, ctx } = await open(itemOf(MADE()), { hash: '#/result/a', name: '하영' });
+  await page.getByText('산하, 민우 중 한 분이 맡으면').waitFor();
+  assert.equal(await page.getByText('분석').count(), 0);
+  assert.equal(await page.getByRole('button', { name: '내가 만들게요' }).count(), 0);
+  assert.equal(await page.getByRole('textbox').count(), 0);
+  await ctx.close();
+});
+
+test('산하가 한 줄을 쓰고 맡으면 서버로 보내고 화면이 바뀐다', async () => {
+  const { page, calls, ctx } = await open({ ...itemOf(MADE()), make: (b) => ({ ok: true, card: MADE({ maker: '산하', idea: b.idea }) }) }, { hash: '#/result/a', name: '산하' });
+  await page.getByLabel('제이제이 버전 한 줄').fill('학식 줄에서 달리는 제이제이');
+  await page.getByRole('button', { name: '내가 만들게요' }).click();
+  await page.getByText('맡은 사람: 산하').waitFor();
+  const c = calls.find((x) => x.action === 'make');
+  assert.equal(c.idea, '학식 줄에서 달리는 제이제이');
+  assert.equal(c.expect, '');
+  assert.equal(c.id, 'a');
+  await page.getByRole('button', { name: '한 줄 고치기' }).waitFor();
+  await ctx.close();
+});
+
+test('빈 한 줄이면 보내지 않고 안내한다', async () => {
+  const { page, calls, ctx } = await open(itemOf(MADE()), { hash: '#/result/a', name: '산하' });
+  await page.getByRole('button', { name: '내가 만들게요' }).click();
+  await page.getByRole('alert').filter({ hasText: '한 줄을 써 주세요' }).waitFor();
+  assert.equal(calls.filter((x) => x.action === 'make').length, 0);
+  await ctx.close();
+});
+
+test('민우는 산하가 맡은 영상을 이어받을 수 있다', async () => {
+  const { page, calls, ctx } = await open({ ...itemOf(MADE({ maker: '산하', idea: '산하 안' })), make: { ok: true, card: MADE({ maker: '민우', idea: '산하 안' }) } }, { hash: '#/result/a', name: '민우' });
+  await page.getByLabel('제이제이 버전 한 줄').waitFor();
+  assert.equal(await page.getByLabel('제이제이 버전 한 줄').inputValue(), '산하 안');
+  await page.getByRole('button', { name: '내가 이어받기' }).click();
+  await page.getByText('맡은 사람: 민우').waitFor();
+  assert.equal(calls.find((x) => x.action === 'make').expect, '산하');
+  await ctx.close();
+});
+
+test('방금 다른 사람이 맡았으면 안내하고 새로 불러온다', async () => {
+  let n = 0;
+  const { page, ctx } = await open({
+    item: () => ({ ok: true, card: n++ ? MADE({ maker: '민우', idea: '민우 안' }) : MADE() }),
+    make: { ok: false, error: 'changed' }
+  }, { hash: '#/result/a', name: '산하' });
+  await page.getByLabel('제이제이 버전 한 줄').fill('산하 안');
+  await page.getByRole('button', { name: '내가 만들게요' }).click();
+  await page.getByText('맡은 사람: 민우').waitFor();
+  await page.getByRole('alert').filter({ hasText: '방금 다른 분이 맡았습니다' }).waitFor();
+  await ctx.close();
+});
+
+test('국현은 맡은 사람이 있어야 발행 링크를 넣는다', async () => {
+  let r = await open(itemOf(MADE()), { hash: '#/result/a', name: '국현' });
+  await r.page.getByText('산하, 민우 중 한 분이 맡으면').waitFor();
+  assert.equal(await r.page.getByLabel('게시한 영상 링크').count(), 0);
+  await r.ctx.close();
+  const url = 'https://www.instagram.com/reel/OURS1/';
+  r = await open({ ...itemOf(MADE({ maker: '산하', idea: '안' })), publish: { ok: true, card: MADE({ word: '발행', maker: '산하', idea: '안', publishedUrl: url }) } }, { hash: '#/result/a', name: '국현' });
+  await r.page.getByLabel('게시한 영상 링크').fill(url);
+  await r.page.getByRole('button', { name: '발행으로 넘기기' }).click();
+  const ours = r.page.getByRole('link', { name: '우리 영상 보기' });
+  await ours.waitFor();
+  assert.equal(await ours.getAttribute('href'), url);
+  await r.page.locator('.stamp', { hasText: '발행' }).waitFor();
+  assert.equal(r.calls.find((x) => x.action === 'publish').url, url);
+  await r.ctx.close();
+});
+
+test('원본 링크를 넣으면 이유를 알려 준다', async () => {
+  const { page, ctx } = await open({ ...itemOf(MADE({ maker: '산하', idea: '안' })), publish: { ok: false, error: 'same' } }, { hash: '#/result/a', name: '산하' });
+  await page.getByLabel('게시한 영상 링크').fill('https://www.youtube.com/watch?v=p6kY8-yTCwA');
+  await page.getByRole('button', { name: '발행으로 넘기기' }).click();
+  await page.getByRole('alert').filter({ hasText: '레퍼런스 원본 링크' }).waitFor();
+  await ctx.close();
+});
+
+test('목록의 발행 카드는 제작 화면으로 가고, 하영에게는 링크 칸이 없다', async () => {
+  const card = MADE({ word: '발행', maker: '산하', idea: '안', publishedUrl: 'https://www.instagram.com/reel/OURS1/' });
+  const { page, ctx } = await open(itemOf(card), { hash: '#/list', name: '하영' });
+  await page.locator('.card .stamp', { hasText: '발행' }).click();
+  await page.waitForURL(/#\/result\/a/);
+  await page.getByRole('link', { name: '우리 영상 보기' }).waitFor();
+  assert.equal(await page.getByRole('textbox').count(), 0);
+  await ctx.close();
+});
+
+test('발행으로 넘어간 투표 주소로 들어오면 제작 화면으로 보낸다', async () => {
+  const card = MADE({ word: '발행', maker: '산하', idea: '안', publishedUrl: 'https://www.instagram.com/reel/OURS1/' });
+  const { page, ctx } = await open(itemOf(card), { hash: '#/vote/a' });
+  await page.waitForURL(/#\/result\/a/);
+  await ctx.close();
+});
+
+test('맡은 사람 줄은 제이제이 버전 칸 안에 있다', async () => {
+  const { page, ctx } = await open(itemOf(MADE({ maker: '산하', idea: '안' })), { hash: '#/result/a', name: '하영' });
+  const line = page.getByText('맡은 사람: 산하');
+  await line.waitFor();
+  const a = await line.boundingBox();
+  const b = await page.locator('.sec').first().boundingBox();
+  assert.ok(a.y >= b.y && a.y + a.height <= b.y + b.height, '칸 밖에 있다');
   await ctx.close();
 });

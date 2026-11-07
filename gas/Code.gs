@@ -4,7 +4,7 @@
 
 const TEAM_ = ['국현', '하영', '산하', '민우', '실장님'];
 const TABS_ = {
-  items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'createdAt', 'produced', 'analysis', 'tries', 'retryAt'],
+  items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'createdAt', 'produced', 'analysis', 'tries', 'retryAt', 'maker', 'idea', 'publishedUrl', 'publishedAt'],
   votes: ['id', 'voter', 'value', 'at'],
   results: ['id', 'json', 'at'],
   thumbs: ['id', 'b64', 'at'],
@@ -12,7 +12,7 @@ const TABS_ = {
 };
 // 숫자·날짜로 자동 변환되면 안 되는 열.
 const TEXT_COLS_ = {
-  items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'analysis'],
+  items: ['id', 'url', 'platform', 'videoId', 'line', 'account', 'title', 'thumbUrl', 'analysis', 'maker', 'idea', 'publishedUrl'],
   votes: ['id', 'voter', 'value'],
   results: ['id', 'json'],
   thumbs: ['id', 'b64'],
@@ -31,6 +31,8 @@ function applyText_(key, s) {
   });
 }
 
+const upgraded_ = {};
+
 function tab_(key) {
   const ss = SpreadsheetApp.getActive();
   const name = TAB_NAMES_[key];
@@ -40,6 +42,13 @@ function tab_(key) {
     s.getRange(1, 1, 1, TABS_[key].length).setValues([TABS_[key]]);
     s.setFrozenRows(1);
     applyText_(key, s);
+  } else if (!upgraded_[key]) {
+    // 새 열이 생기기 전에 만든 시트는 머리글을 채운다. 기존 줄은 그대로 둔다.
+    if (s.getLastColumn() < TABS_[key].length) {
+      s.getRange(1, 1, 1, TABS_[key].length).setValues([TABS_[key]]);
+      applyText_(key, s);
+    }
+    upgraded_[key] = true;
   }
   return s;
 }
@@ -109,8 +118,8 @@ function viewFor_(item, votes, token) {
   return publicView({
     id: item.id, url: item.url, platform: item.platform, videoId: item.videoId, line: item.line,
     account: item.account, title: item.title, thumbUrl: item.thumbUrl, createdAt: item.createdAt,
-    analysis: item.analysis
-  }, t, my, !!item.produced);
+    analysis: item.analysis, maker: item.maker, idea: item.idea, publishedUrl: item.publishedUrl
+  }, t, my, !!item.produced, !!item.publishedUrl);
 }
 
 function fetchMeta_(link) {
@@ -185,6 +194,29 @@ function aItem_(b) {
     if (r) out.result = JSON.parse(r.json);
   }
   return out;
+}
+
+function aMake_(b) {
+  const item = rows_('items').find((i) => i.id === b.id);
+  if (!item) return { ok: false, error: 'notfound' };
+  const c = checkMake({ member: memberOf_(b.token), produced: !!item.produced, maker: item.maker, expect: b.expect, idea: b.idea });
+  if (c.error) return { ok: false, error: c.error };
+  setCell_('items', item._row, 'maker', c.maker);
+  setCell_('items', item._row, 'idea', safeCell(c.idea));
+  item.maker = c.maker;
+  item.idea = c.idea;
+  return { ok: true, card: viewFor_(item, rows_('votes'), b.token) };
+}
+
+function aPublish_(b) {
+  const item = rows_('items').find((i) => i.id === b.id);
+  if (!item) return { ok: false, error: 'notfound' };
+  const c = checkPublish({ member: memberOf_(b.token), produced: !!item.produced, maker: item.maker, url: b.url, refPlatform: item.platform, refId: item.videoId });
+  if (c.error) return { ok: false, error: c.error };
+  setCell_('items', item._row, 'publishedUrl', c.url);
+  setCell_('items', item._row, 'publishedAt', Date.now());
+  item.publishedUrl = c.url;
+  return { ok: true, card: viewFor_(item, rows_('votes'), b.token) };
 }
 
 function aPcPending_() {
@@ -278,7 +310,7 @@ function aBootstrap_() {
   return { ok: true, pcKey };
 }
 
-const USER_ACTIONS_ = { list: aList_, add: aAdd_, vote: aVote_, item: aItem_ };
+const USER_ACTIONS_ = { list: aList_, add: aAdd_, vote: aVote_, item: aItem_, make: aMake_, publish: aPublish_ };
 const PC_ACTIONS_ = {
   pcPending: aPcPending_, pcThumb: aPcThumb_, pcResult: aPcResult_, pcFail: aPcFail_,
   adminRetry: aAdminRetry_, adminSet: aAdminSet_, adminStatus: aAdminStatus_, adminClear: aAdminClear_

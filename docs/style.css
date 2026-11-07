@@ -159,3 +159,17 @@ a { color: inherit; }
 .top a.to-home { display: inline-block; padding: 0 0 7px; }
 .who { position: absolute; left: 16px; top: 16px; z-index: 3; display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 800; }
 .who button { border: 0; background: rgba(255,255,255,.22); color: #fff; font-size: 12.5px; font-weight: 800; border-radius: 9px; padding: 7px 10px; }
+
+/* 제작·발행 */
+.sec .maker-line { font-weight: 800; margin: 0 0 4px; }
+.sec p { margin: 0 0 6px; }
+.make-form { display: grid; gap: 8px; margin-top: 12px; }
+.sec > .make-form:first-child { margin-top: 0; }
+.make-form label { display: block; font-weight: 800; font-size: 14px; }
+.make-form input { width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 16px; color: var(--ink); background: #eef1f5; margin-top: 6px; }
+.make-form .help { font-size: 13px; margin: 0; color: #4a5160; }
+.make-form .err:empty { display: none; }
+.sec .err { color: #b3261e; font-weight: 800; margin: 0; }
+.sec.pub { position: relative; overflow: hidden; min-height: 96px; }
+.sec.pub a { color: var(--blue-ink); font-weight: 800; }
+.sec.pub .stamp { font-size: 68px; color: var(--yellow); -webkit-text-stroke: 1px var(--ink); }

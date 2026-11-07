@@ -34,15 +34,39 @@ function tally(votes) {
   return { likes: vals.filter((x) => x === 'like').length, nos: vals.filter((x) => x === 'no').length };
 }
 
-function itemStatus(t, produced) {
+function itemStatus(t, produced, published) {
+  if (published) return '발행';
   if (produced) return '제작';
   if (t.nos >= GOAL_NOS) return '탈락';
   return '진행';
 }
 
 function cardWord(status, myVote) {
-  if (status === '제작' || status === '탈락') return status;
+  if (status === '발행' || status === '제작' || status === '탈락') return status;
   return myVote ? '완료' : '투표';
+}
+
+// 담당자 결정(2026-11-07): 제작은 산하·민우. 게시는 담당자 몫이기도 해서 발행 링크는 국현도 넣는다.
+const MAKERS_ = ['산하', '민우'];
+const PUBLISHERS_ = ['국현', '산하', '민우'];
+
+// expect는 화면을 열 때 본 담당. 그 사이 바뀌었으면 덮어쓰지 않는다.
+function checkMake(o) {
+  if (MAKERS_.indexOf(o.member) < 0) return { error: 'role' };
+  if (!o.produced) return { error: 'notproduced' };
+  if (String(o.maker || '') !== String(o.expect || '')) return { error: 'changed' };
+  const idea = cleanLine(o.idea);
+  return idea ? { maker: o.member, idea } : { error: 'idea' };
+}
+
+function checkPublish(o) {
+  if (PUBLISHERS_.indexOf(o.member) < 0) return { error: 'role' };
+  if (!o.produced) return { error: 'notproduced' };
+  if (!o.maker) return { error: 'nomaker' };
+  const link = parseLink(o.url);
+  if (!link) return { error: 'link' };
+  if (link.platform === o.refPlatform && String(link.id) === String(o.refId)) return { error: 'same' };
+  return { url: link.url };
 }
 
 function canVote(produced) {
@@ -54,8 +78,8 @@ function shouldProduce(t, produced) {
 }
 
 // 내 표가 없고 진행 중이면 표 수를 넣지 않는다.
-function publicView(item, t, myVote, produced) {
-  const status = itemStatus(t, produced);
+function publicView(item, t, myVote, produced, published) {
+  const status = itemStatus(t, produced, published);
   const view = Object.assign({}, item, { word: cardWord(status, myVote), myVote: myVote || null });
   if (myVote || status !== '진행') {
     view.likes = t.likes;
@@ -74,7 +98,7 @@ function safeCell(s) {
   return /^[=+\-@]/.test(s) ? `'${s}` : s;
 }
 
-const CARD_ORDER_ ={ 투표: 0, 완료: 1, 제작: 2, 탈락: 3 };
+const CARD_ORDER_ ={ 투표: 0, 완료: 1, 제작: 2, 발행: 3, 탈락: 4 };
 
 function sortCards(cards) {
   return cards.slice().sort((a, b) => (CARD_ORDER_[a.word] - CARD_ORDER_[b.word]) || (b.createdAt - a.createdAt));

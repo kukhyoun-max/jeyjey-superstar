@@ -1,5 +1,5 @@
 {
   "name": "jeyjey-superstar",
   "private": true,
-  "scripts": { "test": "node --test tests/embed.test.cjs tests/logic.test.cjs tests/web.spec.cjs" }
+  "scripts": { "test": "node --test tests/embed.test.cjs tests/logic.test.cjs tests/server.fake.test.cjs tests/web.spec.cjs" }
 }

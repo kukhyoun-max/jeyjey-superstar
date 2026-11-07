@@ -4,6 +4,9 @@ const APP_URL = 'https://kukhyoun-max.github.io/jeyjey-superstar/';
 const PLATFORM_NAME = { instagram: '인스타', youtube: '유튜브' };
 const NEXT_DELAY_MS = 900;
 const TEAM = ['국현', '하영', '산하', '민우', '실장님'];
+const MAKERS = ['산하', '민우'];
+const PUBLISHERS = ['국현', '산하', '민우'];
+const isMade = (word) => word === '제작' || word === '발행';
 
 const app = document.getElementById('app');
 const mem = {};
@@ -201,7 +204,7 @@ function cardNode(c) {
   const src = thumbOf(c);
   const sub = [c.account && (c.platform === 'youtube' ? c.account : `@${c.account}`), PLATFORM_NAME[c.platform]].filter(Boolean).join(' · ');
   const done = c.word !== '투표';
-  return el('a', { class: `card word-${c.word}${done ? ' done' : ''}`, href: c.word === '제작' ? `#/result/${c.id}` : `#/vote/${c.id}`, 'aria-label': `${c.line}, ${c.word}` },
+  return el('a', { class: `card word-${c.word}${done ? ' done' : ''}`, href: isMade(c.word) ? `#/result/${c.id}` : `#/vote/${c.id}`, 'aria-label': `${c.line}, ${c.word}` },
     src ? el('img', { class: 'thumb', src, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', on: { error: (e) => e.target.remove() } }) : null,
     el('div', { class: 'info' }, el('div', { class: 't' }, c.line), el('div', { class: 'a' }, sub)),
     el('span', { class: `stamp w-${c.word}` }, c.word));
@@ -272,7 +275,7 @@ async function renderVote(id) {
       first = one.card;
     }
   } catch (e) { if (e.message !== 'token') show(retryBox(() => renderVote(id))); return; }
-  if (first.word === '제작') { location.replace(`#/result/${id}`); return; }
+  if (isMade(first.word)) { location.replace(`#/result/${id}`); return; }
 
   // 연 영상을 맨 앞에 두고, 내 표가 필요한 영상을 잇는다.
   const items = [first, ...cards.filter((c) => c.word === '투표' && c.id !== id)];
@@ -403,18 +406,88 @@ async function renderResult(id) {
   try { r = await api('item', { id }); } catch (e) { if (e.message !== 'token') show(retryBox(() => renderResult(id))); return; }
   if (!r.ok) { show(retryBox(() => renderResult(id))); return; }
   const c = r.card;
-  if (c.word !== '제작') { location.replace(`#/vote/${id}`); return; }
-  const res = r.result;
+  if (!isMade(c.word)) { location.replace(`#/vote/${id}`); return; }
+  drawMade(id, c, r.result);
+}
+
+const MAKE_ERRORS = {
+  role: '제작은 산하, 민우만 맡을 수 있습니다.',
+  idea: '제이제이 버전을 80자 안의 한 줄로 써 주세요.',
+  notproduced: '아직 제작으로 넘어가지 않은 영상입니다.'
+};
+const PUBLISH_ERRORS = {
+  role: '발행 링크는 국현, 산하, 민우만 넣을 수 있습니다.',
+  nomaker: '맡은 사람이 있어야 발행할 수 있습니다.',
+  link: '인스타그램 또는 유튜브 게시물 링크를 넣어 주세요.',
+  same: '레퍼런스 원본 링크입니다. 우리가 게시한 영상 링크를 넣어 주세요.',
+  notproduced: '아직 제작으로 넘어가지 않은 영상입니다.'
+};
+
+// 입력 하나와 버튼 하나. submit이 실패 문구를 돌려주면 그 자리에 보여 준다.
+function oneField({ label, help, value, button, inputmode, submit }) {
+  const input = el('input', { value: value || '', autocomplete: 'off', inputmode });
+  const err = el('p', { class: 'err', role: 'alert' });
+  const btn = el('button', { type: 'submit', class: 'btn y' }, button);
+  return el('form', { class: 'make-form', on: { submit: async (e) => {
+    e.preventDefault();
+    err.textContent = '';
+    btn.disabled = true;
+    try {
+      const msg = await submit(input.value.trim());
+      if (msg) err.textContent = msg;
+    } catch (x) {
+      if (x.message !== 'token') err.textContent = '저장하지 못했습니다. 연결을 확인하고 다시 눌러 주세요.';
+    }
+    btn.disabled = false;
+  } } }, el('label', null, label, input), help ? el('p', { class: 'help' }, help) : null, err, btn);
+}
+
+function drawMade(id, c, res, notice) {
+  const me = store.get('jj_name');
+  const redraw = (card, msg) => drawMade(id, card, res, msg);
   const head = [el('header', { class: 'top' }, el('nav', { class: 'navs' }, el('a', { href: '#/list' }, '‹ 목록'), el('a', { href: '#/' }, '처음으로')), el('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer' }, '원본 영상 보기')), ];
   const title = el('h1', { class: 'display' }, c.line);
-  let body;
-  if (!res && c.analysis === '실패') {
-    body = el('div', { class: 'msg-box' }, el('span', { class: 'display' }, '분석 실패'), el('p', null, '이 영상을 분석하지 못했습니다. 담당자가 확인합니다.'));
-  } else if (!res) {
-    body = el('div', { class: 'msg-box' }, el('span', { class: 'display' }, '분석 보류'), el('p', null, '좋아요 3개를 받았습니다. 지금은 자동 분석을 멈춰 두었습니다.'));
-  } else if (res.fit === false) {
+
+  const makeSec = el('div', { class: 'sec' }, el('h2', null, '제이제이 버전'),
+    c.maker ? el('p', { class: 'maker-line' }, `맡은 사람: ${c.maker}`) : el('p', null, '아직 맡은 사람이 없습니다. 산하, 민우 중 한 분이 맡으면 여기에 나옵니다.'),
+    c.idea ? el('p', null, c.idea) : null,
+    notice ? el('p', { class: 'err', role: 'alert' }, notice) : null,
+    MAKERS.includes(me) && !c.publishedUrl ? oneField({
+      label: '제이제이 버전 한 줄',
+      help: '무대, 소품, 상황 중 하나 이상을 전주대 요소로 바꿔 주세요.',
+      value: c.idea,
+      button: !c.maker ? '내가 만들게요' : c.maker === me ? '한 줄 고치기' : '내가 이어받기',
+      submit: async (idea) => {
+        if (!idea) return '제이제이 버전 한 줄을 써 주세요.';
+        const out = await api('make', { id, idea, expect: c.maker || '' });
+        if (out.ok) { redraw(out.card); return null; }
+        if (out.error === 'changed') {
+          const fresh = await api('item', { id });
+          if (fresh.ok) { redraw(fresh.card, '방금 다른 분이 맡았습니다. 맡은 사람을 확인해 주세요.'); return null; }
+        }
+        return MAKE_ERRORS[out.error] || '저장하지 못했습니다. 다시 눌러 주세요.';
+      }
+    }) : null);
+
+  const pubSec = c.publishedUrl ? el('div', { class: 'sec pub' }, el('h2', null, '발행'),
+    el('a', { href: c.publishedUrl, target: '_blank', rel: 'noopener noreferrer' }, '우리 영상 보기'),
+    el('span', { class: 'stamp w-발행' }, '발행')) : null;
+  const pubForm = PUBLISHERS.includes(me) && c.maker ? el('div', { class: 'sec' }, oneField({
+    label: '게시한 영상 링크',
+    value: c.publishedUrl,
+    inputmode: 'url',
+    button: c.publishedUrl ? '링크 고치기' : '발행으로 넘기기',
+    submit: async (url) => {
+      const out = await api('publish', { id, url });
+      if (out.ok) { redraw(out.card); return null; }
+      return PUBLISH_ERRORS[out.error] || '저장하지 못했습니다. 다시 눌러 주세요.';
+    }
+  })) : null;
+
+  let body = null;
+  if (res && res.fit === false) {
     body = el('div', { class: 'sec' }, el('h2', null, '이 형식은 안 맞음'), el('p', null, String(res.reason || '')));
-  } else {
+  } else if (res) {
     body = [
       res.seenVideo === false ? el('div', { class: 'sec' }, el('p', null, '영상을 직접 보지 않고 한 줄 설명과 공개 정보로 쓴 초안입니다. 영상과 맞는지 확인해 주세요.')) : null,
       el('div', { class: 'sec' }, el('h2', null, '왜 먹혔나'), el('p', null, String(res.why || '')), res.format ? el('p', null, `빌려 올 형식: ${res.format}`) : null),
@@ -428,7 +501,7 @@ async function renderResult(id) {
       el('div', { class: 'sec' }, el('p', null, '뽑은 뒤 AI 생성 지침 5장 검수표로 확인하고, 올릴 때 인스타 AI 정보 표시를 켜 주세요.'))
     ];
   }
-  show(...head, el('section', { class: 'result' }, title, body));
+  show(...head, el('section', { class: 'result' }, title, makeSec, pubSec, pubForm, body));
 }
 
 // ── 길 찾기 ──────────────────────────────────────

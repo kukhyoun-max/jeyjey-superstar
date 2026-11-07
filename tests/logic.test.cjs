@@ -123,3 +123,54 @@ test('시트에 수식으로 들어갈 수 있는 글은 앞에 작은따옴표�
   assert.equal(L.safeCell('@a'), "'@a");
   assert.equal(L.safeCell('학식'), '학식');
 });
+
+// ── 제작·발행 ─────────────────────────────────────
+test('발행 링크가 있으면 상태와 도장이 발행이다', () => {
+  assert.equal(L.itemStatus({ likes: 3, nos: 0 }, true, true), '발행');
+  assert.equal(L.itemStatus({ likes: 3, nos: 0 }, true, false), '제작');
+  assert.equal(L.cardWord('발행', 'like'), '발행');
+  const v = L.publicView({ id: 'a' }, { likes: 3, nos: 1 }, null, true, true);
+  assert.equal(v.word, '발행');
+  assert.equal(v.likes, 3);
+});
+
+test('목록은 제작, 발행, 탈락 순서다', () => {
+  const words = L.sortCards(['탈락', '발행', '제작', '투표'].map((word) => ({ word, createdAt: 1 }))).map((c) => c.word);
+  assert.deepEqual(words, ['투표', '제작', '발행', '탈락']);
+});
+
+const MAKE = (o) => ({ member: '산하', produced: true, maker: '', expect: '', idea: '학식 줄에서 달리는 제이제이', ...o });
+
+test('제작은 산하와 민우만 맡는다', () => {
+  assert.deepEqual(L.checkMake(MAKE()), { maker: '산하', idea: '학식 줄에서 달리는 제이제이' });
+  assert.equal(L.checkMake(MAKE({ member: '민우' })).maker, '민우');
+  for (const member of ['국현', '하영', '실장님']) assert.equal(L.checkMake(MAKE({ member })).error, 'role');
+});
+
+test('제작으로 넘어간 영상만 맡을 수 있고 한 줄이 있어야 한다', () => {
+  assert.equal(L.checkMake(MAKE({ produced: false })).error, 'notproduced');
+  assert.equal(L.checkMake(MAKE({ idea: '   ' })).error, 'idea');
+  assert.equal(L.checkMake(MAKE({ idea: '가'.repeat(81) })).error, 'idea');
+});
+
+test('내가 본 뒤 담당이 바뀌었으면 덮어쓰지 않는다', () => {
+  assert.equal(L.checkMake(MAKE({ maker: '민우', expect: '' })).error, 'changed');
+  assert.equal(L.checkMake(MAKE({ maker: '민우', expect: '민우' })).maker, '산하');
+});
+
+const PUB = (o) => ({ member: '국현', produced: true, maker: '산하', url: 'https://www.instagram.com/reel/OURS1/?igsh=x', refPlatform: 'youtube', refId: 'REF', ...o });
+
+test('발행 링크는 국현, 산하, 민우가 넣고 주소를 정리한다', () => {
+  for (const member of ['국현', '산하', '민우']) assert.deepEqual(L.checkPublish(PUB({ member })), { url: 'https://www.instagram.com/reel/OURS1/' });
+  for (const member of ['하영', '실장님']) assert.equal(L.checkPublish(PUB({ member })).error, 'role');
+});
+
+test('담당이 없거나 링크가 틀리면 발행하지 않는다', () => {
+  assert.equal(L.checkPublish(PUB({ produced: false })).error, 'notproduced');
+  assert.equal(L.checkPublish(PUB({ maker: '' })).error, 'nomaker');
+  assert.equal(L.checkPublish(PUB({ url: 'https://example.com/a' })).error, 'link');
+});
+
+test('레퍼런스 원본 링크를 발행 링크로 넣지 못한다', () => {
+  assert.equal(L.checkPublish(PUB({ url: 'https://youtu.be/REF', refPlatform: 'youtube', refId: 'REF' })).error, 'same');
+});
