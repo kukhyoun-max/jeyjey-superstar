@@ -752,7 +752,7 @@ for (const [w, h] of [[390, 844], [363, 600]]) {
     const box = await page.locator('.loader img.jj').boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= w, `가로: ${box.x}, ${box.width}`);
     assert.ok(box.y >= 0 && box.y + box.height <= h, `세로: ${box.y}, ${box.height}`);
-    assert.ok(box.width >= w * 0.48);
+    assert.ok(box.width >= w * 0.36 && box.width <= w * 0.44, `크기: ${box.width}`);
     // 가장 많이 당긴 순간에도 화면 안에 있어야 한다.
     await page.waitForFunction(() => +document.querySelector('.loader .fill').getAttribute('width') > 32);
     const far = await page.locator('.loader img.jj').boundingBox();
