@@ -634,22 +634,24 @@ test('맡은 사람 줄은 제이제이 버전 칸 안에 있다', async () => {
   await ctx.close();
 });
 
-for (const [w, h] of [[390, 844], [363, 600]]) {
-  test(`처음 화면(${w}x${h}): 위에 캐릭터가 없고 버튼 글자가 같으며 캐릭터 셋이 버튼 아래에 다 보인다`, async () => {
+for (const [w, h] of [[390, 844], [363, 600], [430, 932]]) {
+  test(`처음 화면(${w}x${h}): 버튼 글자가 같고 하단 이미지가 화면 끝까지 차며 캐릭터 발까지 보인다`, async () => {
     const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 } }, { hash: '#/' });
     await page.setViewportSize({ width: w, height: h });
-    await page.waitForFunction(() => [...document.querySelectorAll('.home img')].length === 3 && [...document.querySelectorAll('.home img')].every((i) => i.complete && i.naturalWidth));
+    await page.waitForFunction(() => { const i = document.querySelector('.home .cast img'); return i && i.complete && i.naturalWidth; });
+    assert.equal(await page.locator('.home img').count(), 1);
     const sizes = await page.locator('.home .btn').evaluateAll((e) => e.map((x) => getComputedStyle(x).fontSize));
     assert.equal(sizes.length, 2);
     assert.equal(sizes[0], sizes[1]);
     const last = await page.locator('.home .btn').last().boundingBox();
-    for (const sel of ['.jj', '.jate', '.byeori']) {
-      const box = await page.locator(`.home ${sel}`).boundingBox();
-      assert.ok(box.y >= last.y + last.height - 1, `${sel}가 버튼 아래에 있어야 한다: ${box.y}`);
-      assert.ok(box.height >= 70, `${sel}가 너무 작다: ${box.height}`);
-      assert.ok(box.x + box.width / 2 > 0 && box.x + box.width / 2 < w, `${sel}가 화면 안에 있어야 한다`);
-      assert.ok(box.y + box.height / 2 < h, `${sel}가 화면 안에 있어야 한다`);
-    }
+    const cast = await page.locator('.home .cast').boundingBox();
+    const img = await page.locator('.home .cast img').boundingBox();
+    assert.ok(cast.y >= last.y + last.height, '이미지 영역은 버튼 아래에 있어야 한다');
+    assert.equal(Math.round(cast.y + cast.height), h);
+    assert.equal(Math.round(img.width), w);
+    const feet = img.y + img.height * (1065 / 1672);
+    assert.ok(feet <= h, `캐릭터 발이 화면 안에 있어야 한다: ${feet}`);
+    assert.ok(img.y + img.height >= h - 1, '이미지 아래에 빈틈이 없어야 한다');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await ctx.close();
   });

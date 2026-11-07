@@ -93,11 +93,7 @@ function renderHome() {
     who,
     el('h1', { class: 'display' }, '제이제이 ', el('span', null, '수퍼스타'), el('br'), '만들기 프로젝트'),
     el('div', { class: 'btns' }, el('button', { class: 'btn y', on: { click: pasteLink } }, '찾은 영상 붙여넣기'), voteLink),
-    el('div', { class: 'cast' },
-      el('div', { class: 'hill' }),
-      el('img', { class: 'jate', src: 'jate.webp', alt: '' }),
-      el('img', { class: 'byeori', src: 'byeori.webp', alt: '' }),
-      el('img', { class: 'jj', src: 'jeyjey.webp', alt: '' }))));
+    el('div', { class: 'cast' }, el('img', { src: 'home-cast.webp', alt: '' }))));
   api('list').then((r) => {
     if (r.ok && r.todo > 0) { badge.textContent = String(r.todo); badge.removeAttribute('hidden'); }
   }).catch(() => {});

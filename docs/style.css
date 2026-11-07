@@ -34,11 +34,9 @@ a { color: inherit; }
 .home .btns { position: relative; z-index: 2; display: grid; gap: 10px; }
 .home .btn { font-size: 20px; }
 /* 버튼 아래 남은 자리를 모두 캐릭터 영역으로 쓴다 */
-.home .cast { position: relative; flex: 1; min-height: 190px; margin: 6px -16px 0; }
-.home .jj { position: absolute; left: 50%; bottom: 10px; height: 84%; max-width: 62%; object-fit: contain; object-position: bottom; transform: translateX(-50%) rotate(3deg); }
-.home .hill { position: absolute; left: -12%; right: -12%; bottom: -70px; height: 120px; background: var(--yellow); border-radius: 50%; }
-.home .jate { position: absolute; left: 3%; bottom: 14px; height: 56%; max-width: 31%; object-fit: contain; object-position: bottom; transform: rotate(-5deg); }
-.home .byeori { position: absolute; right: 3%; bottom: 14px; height: 56%; max-width: 31%; object-fit: contain; object-position: bottom; transform: rotate(6deg); }
+/* 담당자가 준 이미지(가로 세로 941x1672). 캐릭터 머리 위에서 시작하되, 키 큰 화면에선 아래 빈틈이 없게 위쪽 하늘을 더 보여 준다. 위 끝은 파란 바탕으로 흐려 잇는다 */
+.home .cast { --w: min(100vw, 520px); position: relative; flex: 1; min-height: 210px; margin: 6px -16px 0; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, transparent, #000 56px); mask-image: linear-gradient(180deg, transparent, #000 56px); }
+.home .cast img { position: absolute; left: 0; width: 100%; display: block; top: max(calc(100% - var(--w) * 1.7768), calc(var(--w) * -0.595)); }
 
 /* 머리 */
 .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 16px 14px 10px; }
@@ -144,7 +142,7 @@ a { color: inherit; }
 /* 인스타 임베드: 영상 칸이 폭의 4:5, 머리 54px. 키워서 머리와 좌우 여백을 화면 밖으로 민다 */
 .frame.ig iframe { width: calc(var(--video) * 1.4222); max-width: none; height: calc(var(--video-h) + 54px + 320px); left: calc((100% - var(--video) * 1.4222) / 2); top: calc((100% - var(--video-h)) / 2 - 54px); }
 /* 인스타 정사각형·가로 영상: 첫 화면 사진만 화면 가운데에 남긴다. 누르면 인스타로 간다 */
-.frame.ig.wide iframe { left: 0; transform-origin: 0 0; transform: scale(var(--ig-scale)); top: calc((100% - var(--ig-photo) * var(--ig-scale)) / 2 - 54px * var(--ig-scale)); clip-path: inset(54px 0 calc(100% - 54px - var(--ig-photo)) 0); pointer-events: none; }
+.frame.ig.wide iframe { left: 0; transform-origin: 0 0; transform: scale(var(--ig-scale)); top: calc((100% - var(--ig-photo) * var(--ig-scale)) / 2 - 54px * var(--ig-scale)); clip-path: inset(56px 0 calc(100% - 52px - var(--ig-photo)) 0); pointer-events: none; }
 .ig-open { display: none; position: absolute; inset: 0; z-index: 1; color: #fff; text-decoration: none; }
 .frame.wide .ig-open { display: block; }
 .ig-open span { position: absolute; left: 0; right: 0; top: calc(50% + var(--ig-photo) * var(--ig-scale) / 2 + 10px); text-align: center; font-size: 13.5px; font-weight: 700; }
