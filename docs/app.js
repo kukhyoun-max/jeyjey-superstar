@@ -291,10 +291,14 @@ window.addEventListener('message', (e) => {
   if (!d || d.type !== 'MEASURE' || !d.details || !d.details.height) return;
   const frame = [...document.querySelectorAll('.frame.ig iframe')].find((f) => f.contentWindow === e.source);
   if (!frame) return;
-  const ratio = (d.details.height - IG_CHROME_PX) / frame.getBoundingClientRect().width;
+  // 폭을 바꾸면 늦게 온 높이와 어긋나므로, 임베드 폭은 그대로 두고 배율로만 화면 폭에 맞춘다.
+  const photo = d.details.height - IG_CHROME_PX;
+  const wide = photo / frame.offsetWidth < IG_TALL_RATIO;
   const box = frame.parentNode;
-  box.classList.toggle('wide', ratio < IG_TALL_RATIO);
-  if (ratio < IG_TALL_RATIO) box.style.setProperty('--ig-ratio', ratio.toFixed(4));
+  box.classList.toggle('wide', wide);
+  if (!wide) return;
+  box.style.setProperty('--ig-photo', `${photo}px`);
+  box.style.setProperty('--ig-scale', (box.clientWidth / frame.offsetWidth).toFixed(4));
 });
 
 async function renderVote(id) {

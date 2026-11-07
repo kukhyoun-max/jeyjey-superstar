@@ -144,11 +144,10 @@ a { color: inherit; }
 /* 인스타 임베드: 영상 칸이 폭의 4:5, 머리 54px. 키워서 머리와 좌우 여백을 화면 밖으로 민다 */
 .frame.ig iframe { width: calc(var(--video) * 1.4222); max-width: none; height: calc(var(--video-h) + 54px + 320px); left: calc((100% - var(--video) * 1.4222) / 2); top: calc((100% - var(--video-h)) / 2 - 54px); }
 /* 인스타 정사각형·가로 영상: 첫 화면 사진만 화면 가운데에 남긴다. 누르면 인스타로 간다 */
-.frame.ig.wide { --ig-photo: calc(var(--screen-w) * var(--ig-ratio)); }
-.frame.ig.wide iframe { width: 100%; left: 0; height: calc(var(--ig-photo) + 54px + 320px); top: calc((100% - var(--ig-photo)) / 2 - 54px); clip-path: inset(54px 0 calc(100% - 54px - var(--ig-photo)) 0); pointer-events: none; }
+.frame.ig.wide iframe { left: 0; transform-origin: 0 0; transform: scale(var(--ig-scale)); top: calc((100% - var(--ig-photo) * var(--ig-scale)) / 2 - 54px * var(--ig-scale)); clip-path: inset(54px 0 calc(100% - 54px - var(--ig-photo)) 0); pointer-events: none; }
 .ig-open { display: none; position: absolute; inset: 0; z-index: 1; color: #fff; text-decoration: none; }
 .frame.wide .ig-open { display: block; }
-.ig-open span { position: absolute; left: 0; right: 0; top: calc(50% + var(--ig-photo) / 2 + 10px); text-align: center; font-size: 13.5px; font-weight: 700; }
+.ig-open span { position: absolute; left: 0; right: 0; top: calc(50% + var(--ig-photo) * var(--ig-scale) / 2 + 10px); text-align: center; font-size: 13.5px; font-weight: 700; }
 .swipe-zone.top { top: 0; height: 30%; }
 .swipe-zone.bottom { bottom: 0; height: 40%; }
 .frame .stamp { font-size: 112px; bottom: 190px; right: -4px; }

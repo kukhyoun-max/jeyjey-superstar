@@ -298,6 +298,8 @@ test('인스타 정사각형·가로 영상은 흰 줄이 나오지 않게 사�
   assert.match(shape.clip, /inset/);
   assert.equal(Math.round(shape.w), 390);
   assert.equal(Math.round(shape.left), 0);
+  // 늦게 온 높이와 어긋나지 않도록 임베드 자체의 폭은 바꾸지 않는다.
+  assert.equal(await page.locator('.frame.wide iframe').evaluate((f) => f.offsetWidth), width);
   const hit = await page.evaluate(() => document.elementFromPoint(195, 422).closest('a')?.className);
   assert.equal(hit, 'ig-open');
   await ctx.close();
