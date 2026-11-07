@@ -27,6 +27,48 @@ function el(tag, props, ...kids) {
   return n;
 }
 function show(...nodes) { app.replaceChildren(...nodes); window.scrollTo(0, 0); }
+
+// ── 로딩 화면: 제이제이가 줄을 당겨 막대를 채운다 ──────────
+// 그림 단위는 화면 폭의 1%다(viewBox 100 x 92). 진행률이 아니라 응답이 올 때까지 반복한다.
+['load-jj.webp', 'load-text.webp'].forEach((src) => { new Image().src = src; }); // 처음 나올 때 빈 화면이 되지 않게 미리 받는다.
+const LOAD_CYCLE_MS = 1800;
+const LOAD_BAR_WIDTH = 36.6;
+const LOAD_TILT_DEG = 2.5;
+const LOAD_HAND = { x: 48.6, y: 61.4 }; // 손의 위치(줄 끝)
+const LOAD_PIVOT = { x: 68.5, y: 85.2 }; // 몸이 기우는 중심(발)
+
+function loaderNode() {
+  const art = el('div', { class: 'stage' });
+  art.innerHTML = '<svg viewBox="0 0 100 92" aria-hidden="true"><rect class="track" x="5" y="49" width="39" height="8" rx="4"/><rect class="fill" x="6.2" y="50.2" height="5.6" rx="2.8" width="0"/><line class="rope" y1="53"/><circle class="knob" cy="53" r=".9"/></svg>'; // 고정 문자열만 넣는다.
+  const jj = el('img', { class: 'jj', src: 'load-jj.webp', alt: '' });
+  art.append(el('img', { class: 'word', src: 'load-text.webp', alt: '' }), jj);
+  const node = el('div', { class: 'loader', role: 'status', 'aria-label': '불러오는 중입니다.' }, art);
+  const fill = art.querySelector('.fill');
+  const rope = art.querySelector('.rope');
+  const knob = art.querySelector('.knob');
+  const draw = (s) => {
+    const width = LOAD_BAR_WIDTH * (0.24 + 0.66 * s);
+    const tip = 6.2 + width;
+    const a = (LOAD_TILT_DEG * s * Math.PI) / 180;
+    const vx = LOAD_HAND.x - LOAD_PIVOT.x;
+    const vy = LOAD_HAND.y - LOAD_PIVOT.y;
+    fill.setAttribute('width', width.toFixed(2));
+    knob.setAttribute('cx', tip.toFixed(2));
+    rope.setAttribute('x1', tip.toFixed(2));
+    rope.setAttribute('x2', (LOAD_PIVOT.x + vx * Math.cos(a) - vy * Math.sin(a)).toFixed(2));
+    rope.setAttribute('y2', (LOAD_PIVOT.y + vx * Math.sin(a) + vy * Math.cos(a)).toFixed(2));
+    jj.style.transform = `rotate(${(LOAD_TILT_DEG * s).toFixed(2)}deg)`;
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { draw(0.6); return node; }
+  draw(0);
+  const tick = (now) => {
+    if (!node.isConnected) return; // 화면이 바뀌면 멈춘다.
+    draw((1 - Math.cos((2 * Math.PI * now) / LOAD_CYCLE_MS)) / 2);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(() => requestAnimationFrame(tick)); // show()로 화면에 붙은 뒤 시작한다.
+  return node;
+}
 const go = (hash) => { location.hash = hash; };
 
 async function api(action, body = {}) {
@@ -89,7 +131,7 @@ function renderHome() {
   // 투표할 영상이 있으면 투표 화면으로, 없거나 못 받았으면 목록으로 간다.
   const voteLink = el('a', { class: 'btn w', href: '#/list', on: { click: async (e) => {
     e.preventDefault();
-    voteLink.classList.add('busy');
+    show(loaderNode());
     const r = await listed;
     const first = r && r.ok ? r.cards.find((c) => c.word === '투표') : null;
     go(first ? `#/vote/${first.id}` : '#/list');
@@ -252,12 +294,14 @@ async function renderList() {
   };
   const bOne = switchBtn('한 줄에 하나', !two, ICON_ONE, () => setView(false));
   const bTwo = switchBtn('한 줄에 둘', two, ICON_TWO, () => setView(true));
-  show(el('header', { class: 'top' },
-    el('div', { class: 'head-left' }, el('a', { class: 'to-home', href: '#/' }, '‹ 처음으로'), el('h1', { class: 'ttl display' }, '투표 목록', small)),
-    el('div', { class: 'sw' }, bOne, bTwo)), grid);
+  show(loaderNode());
   try {
     const r = await api('list');
+    if (location.hash !== '#/list') return; // 기다리는 사이 다른 화면으로 갔다.
     if (!r.ok) { show(retryBox(renderList)); return; }
+    show(el('header', { class: 'top' },
+      el('div', { class: 'head-left' }, el('a', { class: 'to-home', href: '#/' }, '‹ 처음으로'), el('h1', { class: 'ttl display' }, '투표 목록', small)),
+      el('div', { class: 'sw' }, bOne, bTwo)), grid);
     small.textContent = r.todo ? `내 표 ${r.todo}개 남음` : '내 표는 모두 끝났습니다';
     if (!r.cards.length) {
       grid.replaceWith(el('div', { class: 'empty' }, '아직 등록된 영상이 없습니다. 찾은 영상을 먼저 넣어 주세요.', el('a', { class: 'btn y', href: '#/' }, '처음으로')));
@@ -306,7 +350,7 @@ window.addEventListener('message', (e) => {
 });
 
 async function renderVote(id) {
-  show(el('div', { class: 'empty' }, '불러오는 중입니다.'));
+  show(loaderNode());
   let cards;
   let first;
   try {
@@ -459,7 +503,7 @@ function listSec(title, items) {
 }
 
 async function renderResult(id) {
-  show(el('div', { class: 'empty' }, '불러오는 중입니다.'));
+  show(loaderNode());
   let r;
   try { r = await api('item', { id }); } catch (e) { if (e.message !== 'token') show(retryBox(() => renderResult(id))); return; }
   if (!r.ok) { show(retryBox(() => renderResult(id))); return; }

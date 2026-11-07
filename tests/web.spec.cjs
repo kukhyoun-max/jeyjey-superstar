@@ -679,7 +679,7 @@ test('투표하기: 영상 정보를 아직 받는 중에 눌러도 투표 화�
   const list = async () => { await new Promise((r) => setTimeout(r, 500)); return { ok: true, cards: [CARD({ id: 'a' })], todo: 1 }; };
   const { page, ctx } = await open({ list }, { hash: '#/' });
   await page.getByRole('link', { name: /투표하기/ }).click();
-  assert.equal(await page.locator('.home .btn.w.busy').count(), 1);
+  assert.equal(await page.locator('.loader').count(), 1);
   await page.waitForURL(/#\/vote\/a/);
   await ctx.close();
 });
@@ -690,3 +690,73 @@ test('투표하기: 영상 정보를 못 받으면 목록으로 가서 다시 �
   await page.waitForURL(/#\/list/);
   await ctx.close();
 });
+
+const slowList = (cards, ms = 1500) => async () => { await new Promise((r) => setTimeout(r, ms)); return { ok: true, cards, todo: cards.length }; };
+
+test('불러오는 동안 제이제이 로딩 화면이 나오고, 막대와 줄이 움직이고, 끝나면 사라진다', async () => {
+  const { page, ctx } = await open({ list: slowList([CARD()]) }, { hash: '#/vote/a' });
+  const loader = page.locator('.loader');
+  await loader.waitFor({ state: 'attached' });
+  assert.equal(await loader.getAttribute('role'), 'status');
+  assert.equal(await loader.getAttribute('aria-label'), '불러오는 중입니다.');
+  assert.equal(await page.locator('.loader img').count(), 2);
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.loader')).opacity === '1');
+  const read = () => page.evaluate(() => [document.querySelector('.loader .fill').getAttribute('width'), document.querySelector('.loader .rope').getAttribute('x1'), document.querySelector('.loader img.jj').style.transform]);
+  const first = await read();
+  await page.waitForTimeout(250);
+  const second = await read();
+  assert.notDeepEqual(first, second);
+  await page.locator('.slide').first().waitFor();
+  assert.equal(await loader.count(), 0);
+  await ctx.close();
+});
+
+test('로딩 화면은 응답이 빠르면 보이지 않게 0.3초 뒤에 나온다', async () => {
+  const { page, ctx } = await open({ list: slowList([CARD()], 800) }, { hash: '#/vote/a' });
+  await page.locator('.loader').waitFor({ state: 'attached' });
+  const delay = await page.locator('.loader').evaluate((e) => getComputedStyle(e).animationDelay);
+  assert.equal(delay, '0.3s');
+  await ctx.close();
+});
+
+test('목록과 결과 화면도 같은 로딩 화면을 쓰고, 목록 머리는 응답 뒤에 나온다', async () => {
+  let r = await open({ list: slowList([CARD()]) }, { hash: '#/list' });
+  await r.page.locator('.loader').waitFor({ state: 'attached' });
+  assert.equal(await r.page.getByRole('heading', { name: /투표 목록/ }).count(), 0);
+  await r.page.getByRole('heading', { name: /투표 목록/ }).waitFor();
+  assert.equal(await r.page.locator('.loader').count(), 0);
+  await r.ctx.close();
+  r = await open({ item: async () => { await new Promise((x) => setTimeout(x, 800)); return { ok: true, card: CARD({ word: '제작' }) }; } }, { hash: '#/result/a' });
+  await r.page.locator('.loader').waitFor({ state: 'attached' });
+  await r.ctx.close();
+});
+
+test('움직임 줄이기 설정이면 로딩 화면이 멈춰 있다', async () => {
+  const { page, ctx } = await open({ list: slowList([CARD()], 2000) }, { hash: '#/add' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => { location.hash = '#/list'; });
+  await page.locator('.loader').waitFor({ state: 'attached' });
+  const read = () => page.evaluate(() => document.querySelector('.loader .fill').getAttribute('width'));
+  const a = await read();
+  await page.waitForTimeout(250);
+  assert.equal(await read(), a);
+  await ctx.close();
+});
+
+for (const [w, h] of [[390, 844], [363, 600]]) {
+  test(`로딩 화면이 ${w}x${h} 화면을 넘치지 않는다`, async () => {
+    const { page, ctx } = await open({ list: slowList([CARD()], 1500) }, { hash: '#/list' });
+    await page.setViewportSize({ width: w, height: h });
+    await page.locator('.loader img.jj').waitFor({ state: 'attached' });
+    await page.waitForFunction(() => [...document.querySelectorAll('.loader img')].every((i) => i.complete && i.naturalWidth));
+    const box = await page.locator('.loader img.jj').boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= w, `가로: ${box.x}, ${box.width}`);
+    assert.ok(box.y >= 0 && box.y + box.height <= h, `세로: ${box.y}, ${box.height}`);
+    assert.ok(box.width >= w * 0.48);
+    // 가장 많이 당긴 순간에도 화면 안에 있어야 한다.
+    await page.waitForFunction(() => +document.querySelector('.loader .fill').getAttribute('width') > 32);
+    const far = await page.locator('.loader img.jj').boundingBox();
+    assert.ok(far.x + far.width <= w, `기울었을 때 가로: ${far.x}, ${far.width}`);
+    await ctx.close();
+  });
+}
