@@ -91,12 +91,13 @@ function renderHome() {
     el('button', { type: 'button', on: { click: () => { store.del('jj_token'); store.del('jj_name'); renderPick(); } } }, '이름 바꾸기'));
   show(el('section', { class: 'home' },
     who,
-    el('div', { class: 'hill' }),
-    el('img', { class: 'jj', src: 'jeyjey.webp', alt: '' }),
     el('h1', { class: 'display' }, '제이제이 ', el('span', null, '수퍼스타'), el('br'), '만들기 프로젝트'),
     el('div', { class: 'btns' }, el('button', { class: 'btn y', on: { click: pasteLink } }, '찾은 영상 붙여넣기'), voteLink),
-    el('img', { class: 'jate', src: 'jate.webp', alt: '' }),
-    el('img', { class: 'byeori', src: 'byeori.webp', alt: '' })));
+    el('div', { class: 'cast' },
+      el('div', { class: 'hill' }),
+      el('img', { class: 'jate', src: 'jate.webp', alt: '' }),
+      el('img', { class: 'byeori', src: 'byeori.webp', alt: '' }),
+      el('img', { class: 'jj', src: 'jeyjey.webp', alt: '' }))));
   api('list').then((r) => {
     if (r.ok && r.todo > 0) { badge.textContent = String(r.todo); badge.removeAttribute('hidden'); }
   }).catch(() => {});
@@ -271,11 +272,30 @@ function starsNode(likes) {
 // 플레이어 안쪽이 스크롤되지 않아야 손가락 움직임이 바깥 줄로 넘어간다.
 function mountEmbed(box, c, autoplay) {
   box.replaceChildren();
+  box.classList.remove('wide');
   const e = embedFor({ platform: c.platform, id: String(c.videoId), url: c.url }, { autoplay });
   if (e) box.append(el('iframe', { src: e.src, title: c.line, scrolling: 'no', allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: 'allowfullscreen' }));
   // 플레이어는 터치를 가져가므로 위아래에 투명 구역을 얹어 바깥 줄이 넘어가게 한다. 가운데는 재생용으로 비운다.
   box.append(['top', 'bottom', 'left', 'right'].map((s) => el('div', { class: `swipe-zone ${s}` })).reduce((f, n) => { f.append(n); return f; }, document.createDocumentFragment()));
+  if (c.platform === 'instagram') box.append(el('a', { class: 'ig-open', href: c.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': '인스타에서 재생' }, el('span', null, '누르면 인스타에서 재생')));
 }
+
+// 인스타는 정사각형·가로 영상에 「Instagram에서 더 보기」 흰 줄을 영상 위에 띄우고, 임베드 안쪽은 고칠 수 없다.
+// 임베드가 알려 주는 높이로 비율을 알아내, 이런 영상은 첫 화면 사진만 잘라 보여 주고 누르면 인스타로 보낸다.
+const IG_CHROME_PX = 208; // 임베드 높이에서 사진을 뺀 값(머리 54 + 아래 154). 여러 게시물·폭에서 실측.
+const IG_TALL_RATIO = 1.2; // 세로 영상의 사진 칸은 폭의 5/4다.
+window.addEventListener('message', (e) => {
+  if (e.origin !== 'https://www.instagram.com') return;
+  let d = e.data;
+  try { if (typeof d === 'string') d = JSON.parse(d); } catch (x) { return; }
+  if (!d || d.type !== 'MEASURE' || !d.details || !d.details.height) return;
+  const frame = [...document.querySelectorAll('.frame.ig iframe')].find((f) => f.contentWindow === e.source);
+  if (!frame) return;
+  const ratio = (d.details.height - IG_CHROME_PX) / frame.getBoundingClientRect().width;
+  const box = frame.parentNode;
+  box.classList.toggle('wide', ratio < IG_TALL_RATIO);
+  if (ratio < IG_TALL_RATIO) box.style.setProperty('--ig-ratio', ratio.toFixed(4));
+});
 
 async function renderVote(id) {
   show(el('div', { class: 'empty' }, '불러오는 중입니다.'));
@@ -310,11 +330,18 @@ async function renderVote(id) {
   let cur = -1;
   let busy = false;
 
+  const drawMine = (c) => { mineEl.textContent = c.myVote ? `내 표: ${c.myVote === 'like' ? '좋아요' : '아니에요'}` : ''; };
+
   const drawActs = () => {
     const c = slides[cur].card;
+    if (c.word !== '투표') {
+      const text = c.myVote ? `내 표: ${c.myVote === 'like' ? '좋아요' : '아니에요'}. 표는 한 번만 넣을 수 있습니다.` : '투표가 끝난 영상입니다.';
+      bottomHolder.replaceChildren(el('div', { class: 'done-msg' }, starsNode(c.likes), el('p', { role: 'status' }, text)));
+      return;
+    }
     const bar = el('div', { class: 'acts' },
-      el('button', { class: 'no', 'aria-pressed': c.myVote === 'no' ? 'true' : 'false', on: { click: () => vote('no') } }, '아니에요'),
-      el('button', { class: 'yes', 'aria-pressed': c.myVote === 'like' ? 'true' : 'false', on: { click: () => vote('like') } }, '좋아요'));
+      el('button', { class: 'no', on: { click: () => vote('no') } }, '아니에요'),
+      el('button', { class: 'yes', on: { click: () => vote('like') } }, '좋아요'));
     bottomHolder.replaceChildren(bar);
   };
 
@@ -341,7 +368,7 @@ async function renderVote(id) {
     titleEl.textContent = c.line;
     platformEl.textContent = PLATFORM_NAME[c.platform] || '';
     original.href = c.url;
-    mineEl.textContent = c.myVote ? `내 표: ${c.myVote === 'like' ? '좋아요' : '아니에요'}` : '';
+    drawMine(c);
     history.replaceState(null, '', `#/vote/${c.id}`);
     if (!busy) drawActs();
   };
@@ -362,19 +389,25 @@ async function renderVote(id) {
       const v = await api('vote', { id: s0.card.id, value });
       if (!v.ok) {
         if (v.error === 'closed') { location.replace(`#/result/${s0.card.id}`); return; }
+        if (v.error === 'ended' && v.card) { // 다른 기기나 창에서 이미 넣은 표. 서버 값을 그대로 보여 준다.
+          s0.card = v.card;
+          busy = false;
+          drawMine(v.card);
+          drawActs();
+          return;
+        }
         throw new Error('vote');
       }
       const word = v.justProduced ? '제작' : v.card.word;
       s0.card = { ...s0.card, myVote: value, word };
       s0.box.replaceChildren(el('span', { class: `stamp hit w-${word}` }, word));
       const text = v.justProduced ? '내 표로 3개가 찼습니다. 제작으로 넘어갑니다.'
-        : word === '탈락' ? '아니에요 3개로 탈락했습니다.'
-          : v.card.likes === 2 ? '별 하나만 더 받으면 제작입니다.' : '내 표를 넣었습니다.';
+        : v.card.likes === 2 ? '별 하나만 더 받으면 제작입니다.' : '내 표를 넣었습니다.';
       bottomHolder.replaceChildren(el('div', { class: 'done-msg' }, starsNode(v.card.likes), el('p', { role: 'status' }, text)));
       if (v.justProduced) { setTimeout(() => go(`#/result/${s0.card.id}`), 1600); return; }
       setTimeout(() => {
         busy = false;
-        const next = slides.findIndex((x, j) => j > at && x.card.myVote === null);
+        const next = slides.findIndex((x, j) => j > at && x.card.word === '투표');
         if (next < 0) { go('#/list'); return; }
         setCurrent(next); // 스크롤 전에 바꿔야 도중에 누른 표가 다음 영상에 들어간다.
         slides[next].node.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });

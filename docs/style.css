@@ -28,15 +28,17 @@ a { color: inherit; }
 .badge { background: var(--blue); color: #fff; border-radius: 20px; min-width: 25px; padding: 2px 7px; font-size: 14px; }
 
 /* 첫 화면 */
-.home { min-height: 100dvh; padding: 182px 16px 0; position: relative; overflow: hidden; }
-.home h1 { position: relative; z-index: 2; font-size: clamp(27px, 8vw, 36px); line-height: 1.16; margin: 0 0 14px; }
+.home { display: flex; flex-direction: column; min-height: 100dvh; padding: 96px 16px 0; position: relative; overflow: hidden; }
+.home h1 { position: relative; z-index: 2; font-size: clamp(30px, 10.2vw, 44px); line-height: 1.16; margin: 0 0 14px; }
 .home h1 span { color: var(--yellow); }
 .home .btns { position: relative; z-index: 2; display: grid; gap: 10px; }
-.home .jj { position: absolute; right: -22px; top: -10px; width: 170px; transform: rotate(7deg); z-index: 1; }
-.home .hill { position: absolute; left: -12%; right: -12%; bottom: -70px; height: 190px; background: #fff; border-radius: 50%; }
-.home .jate { position: absolute; left: 7%; bottom: 20px; width: 118px; transform: rotate(-5deg); }
-.home .byeori { position: absolute; right: 6%; bottom: 0; width: 112px; transform: rotate(6deg); }
-@media (max-height: 640px) { .home .jate, .home .byeori, .home .hill { display: none; } }
+.home .btn { font-size: 20px; }
+/* 버튼 아래 남은 자리를 모두 캐릭터 영역으로 쓴다 */
+.home .cast { position: relative; flex: 1; min-height: 190px; margin: 6px -16px 0; }
+.home .jj { position: absolute; left: 50%; bottom: 10px; height: 84%; max-width: 62%; object-fit: contain; object-position: bottom; transform: translateX(-50%) rotate(3deg); }
+.home .hill { position: absolute; left: -12%; right: -12%; bottom: -70px; height: 120px; background: var(--yellow); border-radius: 50%; }
+.home .jate { position: absolute; left: 3%; bottom: 14px; height: 56%; max-width: 31%; object-fit: contain; object-position: bottom; transform: rotate(-5deg); }
+.home .byeori { position: absolute; right: 3%; bottom: 14px; height: 56%; max-width: 31%; object-fit: contain; object-position: bottom; transform: rotate(6deg); }
 
 /* 머리 */
 .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 16px 14px 10px; }
@@ -61,7 +63,7 @@ a { color: inherit; }
 .card.word-투표::before, .card.done::before { content: ""; position: absolute; inset: 0; z-index: 1; }
 .card.word-투표::before { background: linear-gradient(155deg, transparent 55%, rgba(255,255,255,.82) 76%); }
 .card.done::before { background: linear-gradient(155deg, transparent 45%, rgba(10,20,42,.85) 74%); }
-.card.word-탈락 { filter: grayscale(1); }
+.card.word-완료 { filter: brightness(.68); }
 .info { position: absolute; left: 0; right: 0; top: 0; padding: 10px 12px 22px; background: linear-gradient(180deg, rgba(10,20,42,.85) 58%, transparent); z-index: 3; }
 .info .t { font-size: 16px; font-weight: 800; line-height: 1.28; overflow-wrap: anywhere; }
 .info .a { font-size: 11.5px; font-weight: 700; opacity: .9; margin-top: 2px; }
@@ -73,7 +75,6 @@ a { color: inherit; }
 .stamp { position: absolute; right: -5px; bottom: -5px; font-family: 'Black Han Sans', sans-serif; font-size: 104px; line-height: 1; white-space: nowrap; transform: rotate(-7deg); transform-origin: right bottom; filter: url(#rough); color: var(--yellow); z-index: 2; pointer-events: none; }
 #grid.two .stamp { font-size: clamp(44px, 14vw, 62px); right: -3px; bottom: -5px; }
 .stamp.w-투표 { color: var(--blue-ink); }
-.stamp.w-탈락 { color: var(--gray); }
 .stamp.hit { animation: hit .28s cubic-bezier(.2, 1.6, .4, 1) both; }
 @keyframes hit { from { transform: rotate(-7deg) scale(1.7); opacity: 0; } to { transform: rotate(-7deg) scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .stamp.hit { animation: none; } }
@@ -142,6 +143,12 @@ a { color: inherit; }
 .frame iframe { position: absolute; border: 0; display: block; background: var(--navy); width: var(--video); height: var(--video-h); left: calc((100% - var(--video)) / 2); top: calc((100% - var(--video-h)) / 2); }
 /* 인스타 임베드: 영상 칸이 폭의 4:5, 머리 54px. 키워서 머리와 좌우 여백을 화면 밖으로 민다 */
 .frame.ig iframe { width: calc(var(--video) * 1.4222); max-width: none; height: calc(var(--video-h) + 54px + 320px); left: calc((100% - var(--video) * 1.4222) / 2); top: calc((100% - var(--video-h)) / 2 - 54px); }
+/* 인스타 정사각형·가로 영상: 첫 화면 사진만 화면 가운데에 남긴다. 누르면 인스타로 간다 */
+.frame.ig.wide { --ig-photo: calc(var(--screen-w) * var(--ig-ratio)); }
+.frame.ig.wide iframe { width: 100%; left: 0; height: calc(var(--ig-photo) + 54px + 320px); top: calc((100% - var(--ig-photo)) / 2 - 54px); clip-path: inset(54px 0 calc(100% - 54px - var(--ig-photo)) 0); pointer-events: none; }
+.ig-open { display: none; position: absolute; inset: 0; z-index: 1; color: #fff; text-decoration: none; }
+.frame.wide .ig-open { display: block; }
+.ig-open span { position: absolute; left: 0; right: 0; top: calc(50% + var(--ig-photo) / 2 + 10px); text-align: center; font-size: 13.5px; font-weight: 700; }
 .swipe-zone.top { top: 0; height: 30%; }
 .swipe-zone.bottom { bottom: 0; height: 40%; }
 .frame .stamp { font-size: 112px; bottom: 190px; right: -4px; }

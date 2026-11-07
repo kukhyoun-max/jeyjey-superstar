@@ -41,9 +41,16 @@ function itemStatus(t, produced, published) {
   return '진행';
 }
 
+// 담당자 결정(2026-11-07): 제작이 아니면 안 만드는 것이므로 화면 단어는 완료 하나로 쓴다.
 function cardWord(status, myVote) {
-  if (status === '발행' || status === '제작' || status === '탈락') return status;
+  if (status === '발행' || status === '제작') return status;
+  if (status === '탈락') return '완료';
   return myVote ? '완료' : '투표';
+}
+
+// 담당자 결정(2026-11-07): 표는 한 영상에 한 사람 한 번. 아니에요 3개면 좋아요 3개가 나올 수 없어 더 받지 않는다.
+function voteEnded(t, alreadyVoted) {
+  return !!alreadyVoted || t.nos >= GOAL_NOS;
 }
 
 // 담당자 결정(2026-11-07): 제작은 산하·민우. 게시는 담당자 몫이기도 해서 발행 링크는 국현도 넣는다.
@@ -98,7 +105,7 @@ function safeCell(s) {
   return /^[=+\-@]/.test(s) ? `'${s}` : s;
 }
 
-const CARD_ORDER_ ={ 투표: 0, 완료: 1, 제작: 2, 발행: 3, 탈락: 4 };
+const CARD_ORDER_ = { 투표: 0, 제작: 1, 발행: 2, 완료: 3 };
 
 function sortCards(cards) {
   return cards.slice().sort((a, b) => (CARD_ORDER_[a.word] - CARD_ORDER_[b.word]) || (b.createdAt - a.createdAt));

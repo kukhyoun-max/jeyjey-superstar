@@ -68,6 +68,36 @@ function produced(sv) {
   return add.id;
 }
 
+test('같은 사람의 두 번째 표는 받지 않고 첫 표를 유지한다', () => {
+  const sv = server();
+  const add = sv.call({ action: 'add', token: sv.token('국현'), url: 'https://www.youtube.com/watch?v=ONE', line: '한 번만' });
+  const t = sv.token('하영');
+  assert.equal(sv.call({ action: 'vote', token: t, id: add.id, value: 'like' }).ok, true);
+  const again = sv.call({ action: 'vote', token: t, id: add.id, value: 'no' });
+  assert.equal(again.ok, false);
+  assert.equal(again.error, 'ended');
+  assert.equal(again.card.myVote, 'like');
+  assert.equal(again.card.likes, 1);
+  assert.equal(again.card.nos, 0);
+  const card = sv.call({ action: 'item', token: t, id: add.id }).card;
+  assert.equal(card.myVote, 'like');
+  assert.equal(card.nos, 0);
+});
+
+test('아니에요 3개면 표를 안 넣은 사람에게도 완료로 보이고 표를 받지 않는다', () => {
+  const sv = server();
+  const add = sv.call({ action: 'add', token: sv.token('국현'), url: 'https://www.youtube.com/watch?v=TWO', line: '끝난 영상' });
+  for (const n of ['국현', '하영', '산하']) sv.call({ action: 'vote', token: sv.token(n), id: add.id, value: 'no' });
+  const t = sv.token('민우');
+  const list = sv.call({ action: 'list', token: t });
+  assert.equal(list.cards.find((c) => c.id === add.id).word, '완료');
+  assert.equal(list.todo, 0);
+  const v = sv.call({ action: 'vote', token: t, id: add.id, value: 'like' });
+  assert.equal(v.error, 'ended');
+  assert.equal(v.card.word, '완료');
+  assert.equal(v.card.myVote, null);
+});
+
 test('좋아요 3개 뒤 산하가 맡고 국현이 발행 링크를 넣으면 카드가 발행이 된다', () => {
   const sv = server();
   const id = produced(sv);

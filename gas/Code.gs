@@ -169,7 +169,13 @@ function aVote_(b) {
   const item = rows_('items').find((i) => i.id === b.id);
   if (!item) return { ok: false, error: 'notfound' };
   if (!canVote(!!item.produced)) return { ok: false, error: 'closed' };
-  append_('votes', { id: b.id, voter: voterHash_(b.token, b.id), value: b.value, at: Date.now() });
+  const voter = voterHash_(b.token, b.id);
+  const before = rows_('votes');
+  const mine = before.filter((v) => v.id === b.id);
+  if (voteEnded(tally(mine), mine.some((v) => v.voter === voter))) {
+    return { ok: false, error: 'ended', card: viewFor_(item, before, b.token) };
+  }
+  append_('votes', { id: b.id, voter, value: b.value, at: Date.now() });
   SpreadsheetApp.flush();
   const votes = rows_('votes');
   const t = tally(votes.filter((v) => v.id === b.id));

@@ -69,7 +69,7 @@ function ok(name, fn) {
   const v1 = await u('국현', 'vote', { id: a.id, value: 'like' });
   ok('좋아요 후 완료·표 공개', () => { assert.equal(v1.card.word, '완료'); assert.equal(v1.card.likes, 1); });
   const v1b = await u('국현', 'vote', { id: a.id, value: 'no' });
-  ok('표 바꾸기', () => { assert.equal(v1b.card.likes, 0); assert.equal(v1b.card.nos, 1); });
+  ok('두 번째 표는 받지 않음', () => { assert.equal(v1b.error, 'ended'); assert.equal(v1b.card.likes, 1); assert.equal(v1b.card.nos, 0); });
   await u('국현', 'vote', { id: a.id, value: 'like' });
 
   const again = (await call({ action: 'pick', name: '국현' })).token;
@@ -108,10 +108,9 @@ function ok(name, fn) {
   const b = await u('국현', 'add', { url: 'https://www.instagram.com/reel/De_m5HoTw7A/?igsh=q', line: '탈락 시험' });
   for (const m of ['국현', '하영', '산하']) await u(m, 'vote', { id: b.id, value: 'no' });
   let cb = (await u('민우', 'list')).cards.find((c) => c.id === b.id);
-  ok('아니에요 3개면 탈락', () => assert.equal(cb.word, '탈락'));
-  await u('국현', 'vote', { id: b.id, value: 'like' });
-  cb = (await u('국현', 'list')).cards.find((c) => c.id === b.id);
-  ok('표가 바뀌면 탈락 풀림', () => assert.equal(cb.word, '완료'));
+  ok('아니에요 3개면 표가 없어도 완료', () => assert.equal(cb.word, '완료'));
+  const vb = await u('민우', 'vote', { id: b.id, value: 'like' });
+  ok('끝난 영상은 표를 받지 않음', () => assert.equal(vb.error, 'ended'));
 
   const f = await u('국현', 'add', { url: 'https://www.youtube.com/watch?v=YojzkmCrcmw', line: '실패 시험' });
   for (const m of ['국현', '하영', '산하']) await u(m, 'vote', { id: f.id, value: 'like' });

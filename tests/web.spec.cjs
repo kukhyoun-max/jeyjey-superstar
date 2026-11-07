@@ -25,7 +25,7 @@ test.after(async () => { await browser.close(); server.close(); });
 
 const CARD = (o) => ({ id: 'a', url: 'https://www.youtube.com/watch?v=p6kY8-yTCwA', platform: 'youtube', videoId: 'p6kY8-yTCwA', line: '학식 경주', account: '계정', title: '', thumbUrl: '', createdAt: 1, analysis: '', word: '투표', myVote: null, ...o });
 
-async function open(handlers, { hash = '', token = 'tok', query = '', name = '하영' } = {}) {
+async function open(handlers, { hash = '', token = 'tok', query = '', name = '하영', igHeight = 0 } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.slice(0, -1) });
   const calls = [];
@@ -36,7 +36,9 @@ async function open(handlers, { hash = '', token = 'tok', query = '', name = '�
     const out = typeof h === 'function' ? await h(b) : h;
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(out || { ok: false, error: 'action' }) });
   });
-  await ctx.route(/youtube\.com\/embed|instagram\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<p>영상</p>' }));
+  // 진짜 인스타 임베드처럼 자기 높이를 부모에게 알린다.
+  const igBody = `<p>영상</p><script>parent.postMessage(JSON.stringify({ type: 'MEASURE', details: { height: ${igHeight} } }), '*')</script>`;
+  await ctx.route(/youtube\.com\/embed|instagram\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: igHeight ? igBody : '<p>영상</p>' }));
   await ctx.route(/fonts\.g/, (r) => r.abort());
   const page = await ctx.newPage();
   if (token) await page.addInitScript(([t, n]) => { if (!localStorage.getItem('jj_token')) { localStorage.setItem('jj_token', t); localStorage.setItem('jj_name', n); } }, [token, name]);
@@ -162,16 +164,18 @@ test('중복 링크는 알림으로 알리고 입력 화면에 남는다', async
   assert.equal(await page.getByRole('button', { name: /단톡방에/ }).count(), 0);
   await ctx.close();
 });
-const FOUR = [CARD({ id: 'a' }), CARD({ id: 'b', word: '완료', myVote: 'like', likes: 2, nos: 0 }), CARD({ id: 'c', word: '제작', likes: 3, nos: 0 }), CARD({ id: 'd', word: '탈락', nos: 3, likes: 0, line: '<img src=x onerror=window.__x=1>' })];
+const FOUR = [CARD({ id: 'a' }), CARD({ id: 'c', word: '제작', likes: 3, nos: 0 }), CARD({ id: 'b', word: '완료', myVote: 'like', likes: 2, nos: 0 }), CARD({ id: 'd', word: '완료', nos: 3, likes: 0, line: '<img src=x onerror=window.__x=1>' })];
 
 test('목록의 도장 단어와 색이 맞고 HTML은 글자로 나온다', async () => {
   const { page, ctx } = await open({ list: { ok: true, cards: FOUR, todo: 1 } }, { hash: '#/list' });
   await page.locator('.stamp').first().waitFor();
-  assert.deepEqual(await page.locator('.stamp').allTextContents(), ['투표', '완료', '제작', '탈락']);
+  assert.deepEqual(await page.locator('.stamp').allTextContents(), ['투표', '제작', '완료', '완료']);
   const colors = await page.locator('.stamp').evaluateAll((e) => e.map((x) => getComputedStyle(x).color));
   assert.equal(colors[1], 'rgb(255, 217, 59)');
   assert.equal(colors[2], 'rgb(255, 217, 59)');
-  assert.equal(colors[3], 'rgb(198, 203, 210)');
+  const look = (w) => page.locator(`.card.word-${w}`).first().evaluate((e) => getComputedStyle(e).filter);
+  assert.match(await look('완료'), /brightness/);
+  assert.equal(await look('제작'), 'none');
   await page.getByText('<img src=x onerror=window.__x=1>').waitFor();
   assert.equal(await page.evaluate(() => window.__x), undefined);
   await ctx.close();
@@ -195,7 +199,7 @@ test('목록의 제작 카드는 결과로, 투표 카드는 투표 화면으로
 });
 
 test('투표할 영상은 카드 하나로 묶이고, 누르면 첫 영상의 투표 화면으로 간다', async () => {
-  const cards = [CARD({ id: 'a', line: '첫째' }), CARD({ id: 'b', line: '둘째' }), CARD({ id: 'e', line: '셋째' }), FOUR[1], FOUR[2]];
+  const cards = [CARD({ id: 'a', line: '첫째' }), CARD({ id: 'b', line: '둘째' }), CARD({ id: 'e', line: '셋째' }), FOUR[2], FOUR[1]];
   const { page, ctx } = await open({ list: { ok: true, cards, todo: 3 } }, { hash: '#/list' });
   await page.locator('.stamp').first().waitFor();
   assert.deepEqual(await page.locator('.stamp').allTextContents(), ['투표', '완료', '제작']);
@@ -257,13 +261,55 @@ test('연타해도 투표는 한 번만 보낸다', async () => {
   await ctx.close();
 });
 
-test('완료한 영상은 내 표를 바꿀 수 있고 제작은 버튼이 없다', async () => {
+test('표를 넣은 영상과 끝난 영상은 버튼이 없고, 제작은 제작 화면으로 간다', async () => {
   const { page, ctx } = await open({ list: { ok: true, cards: FOUR, todo: 1 }, item: (b) => ({ ok: true, card: FOUR.find((c) => c.id === b.id) }) }, { hash: '#/vote/b' });
-  await page.getByRole('button', { name: '좋아요' }).waitFor();
-  await page.getByText('내 표: 좋아요').waitFor();
+  await page.getByText('내 표: 좋아요').first().waitFor();
+  assert.equal(await page.getByRole('button', { name: '좋아요' }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: '아니에요' }).count(), 0);
+  await page.goto(`${base}#/vote/d`);
+  await page.getByText('투표가 끝난 영상입니다.').waitFor();
+  assert.equal(await page.getByRole('button', { name: '좋아요' }).count(), 0);
   await page.goto(`${base}#/vote/c`);
   await page.waitForURL(/#\/result\/c/);
   assert.equal(await page.getByRole('button', { name: '좋아요' }).count(), 0);
+  await ctx.close();
+});
+
+test('이미 넣은 표라고 서버가 답하면 내 표를 보여 주고 버튼을 없앤다', async () => {
+  const { page, ctx } = await open({
+    list: { ok: true, cards: [CARD()], todo: 1 },
+    vote: { ok: false, error: 'ended', card: CARD({ word: '완료', myVote: 'no', likes: 0, nos: 1 }) }
+  }, { hash: '#/vote/a' });
+  await page.getByRole('button', { name: '좋아요' }).click();
+  await page.getByText('내 표: 아니에요').first().waitFor();
+  assert.equal(await page.getByRole('button', { name: '좋아요' }).count(), 0);
+  await ctx.close();
+});
+
+test('인스타 정사각형·가로 영상은 흰 줄이 나오지 않게 사진만 남기고, 누르면 인스타로 간다', async () => {
+  const ig = CARD({ platform: 'instagram', videoId: 'WIDE1', url: 'https://www.instagram.com/reel/WIDE1/' });
+  // 임베드 폭의 3/4 + 인스타 머리·아래 208px
+  const width = Math.round(Math.max(390, 844 * 9 / 16) * 1.4222);
+  const { page, ctx } = await open({ list: { ok: true, cards: [ig], todo: 1 } }, { hash: '#/vote/a', igHeight: Math.round(width * 0.75) + 208 });
+  const go = page.locator('.frame.wide a.ig-open');
+  await go.waitFor();
+  assert.equal(await go.getAttribute('href'), ig.url);
+  const shape = await page.locator('.frame.wide iframe').evaluate((f) => ({ clip: getComputedStyle(f).clipPath, w: f.getBoundingClientRect().width, left: f.getBoundingClientRect().left }));
+  assert.match(shape.clip, /inset/);
+  assert.equal(Math.round(shape.w), 390);
+  assert.equal(Math.round(shape.left), 0);
+  const hit = await page.evaluate(() => document.elementFromPoint(195, 422).closest('a')?.className);
+  assert.equal(hit, 'ig-open');
+  await ctx.close();
+});
+
+test('인스타 세로 영상은 임베드 안에서 그대로 재생한다', async () => {
+  const ig = CARD({ platform: 'instagram', videoId: 'TALL1', url: 'https://www.instagram.com/reel/TALL1/' });
+  const width = Math.round(Math.max(390, 844 * 9 / 16) * 1.4222);
+  const { page, ctx } = await open({ list: { ok: true, cards: [ig], todo: 1 } }, { hash: '#/vote/a', igHeight: Math.round(width * 1.25) + 208 });
+  await page.locator('.frame.ig iframe').waitFor();
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.frame.wide').count(), 0);
   await ctx.close();
 });
 
@@ -585,3 +631,24 @@ test('맡은 사람 줄은 제이제이 버전 칸 안에 있다', async () => {
   assert.ok(a.y >= b.y && a.y + a.height <= b.y + b.height, '칸 밖에 있다');
   await ctx.close();
 });
+
+for (const [w, h] of [[390, 844], [363, 600]]) {
+  test(`처음 화면(${w}x${h}): 위에 캐릭터가 없고 버튼 글자가 같으며 캐릭터 셋이 버튼 아래에 다 보인다`, async () => {
+    const { page, ctx } = await open({ list: { ok: true, cards: [], todo: 0 } }, { hash: '#/' });
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForFunction(() => [...document.querySelectorAll('.home img')].length === 3 && [...document.querySelectorAll('.home img')].every((i) => i.complete && i.naturalWidth));
+    const sizes = await page.locator('.home .btn').evaluateAll((e) => e.map((x) => getComputedStyle(x).fontSize));
+    assert.equal(sizes.length, 2);
+    assert.equal(sizes[0], sizes[1]);
+    const last = await page.locator('.home .btn').last().boundingBox();
+    for (const sel of ['.jj', '.jate', '.byeori']) {
+      const box = await page.locator(`.home ${sel}`).boundingBox();
+      assert.ok(box.y >= last.y + last.height - 1, `${sel}가 버튼 아래에 있어야 한다: ${box.y}`);
+      assert.ok(box.height >= 70, `${sel}가 너무 작다: ${box.height}`);
+      assert.ok(box.x + box.width / 2 > 0 && box.x + box.width / 2 < w, `${sel}가 화면 안에 있어야 한다`);
+      assert.ok(box.y + box.height / 2 < h, `${sel}가 화면 안에 있어야 한다`);
+    }
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await ctx.close();
+  });
+}

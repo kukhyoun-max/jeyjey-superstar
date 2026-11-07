@@ -53,7 +53,7 @@ test('좋아요 3개와 아니에요 2개는 제작이다', () => {
   assert.equal(L.itemStatus({ likes: 3, nos: 2 }, true), '제작');
 });
 
-test('아니에요 3개는 탈락이고 표가 바뀌면 풀린다', () => {
+test('아니에요 3개면 끝난 영상이다', () => {
   assert.equal(L.itemStatus({ likes: 0, nos: 3 }, false), '탈락');
   assert.equal(L.itemStatus({ likes: 1, nos: 2 }, false), '진행');
 });
@@ -68,11 +68,17 @@ test('카드 단어: 내 표 없음은 투표, 있으면 완료', () => {
   assert.equal(L.cardWord('진행', 'no'), '완료');
 });
 
-test('카드 단어: 제작과 탈락은 내 표와 관계없다', () => {
+test('카드 단어: 제작은 내 표와 관계없고, 아니에요 3개로 끝난 영상은 완료다', () => {
   assert.equal(L.cardWord('제작', null), '제작');
   assert.equal(L.cardWord('제작', 'no'), '제작');
-  assert.equal(L.cardWord('탈락', null), '탈락');
-  assert.equal(L.cardWord('탈락', 'like'), '탈락');
+  assert.equal(L.cardWord('탈락', null), '완료');
+  assert.equal(L.cardWord('탈락', 'like'), '완료');
+});
+
+test('표는 한 번만, 아니에요 3개면 더 받지 않는다', () => {
+  assert.equal(L.voteEnded({ likes: 0, nos: 0 }, false), false);
+  assert.equal(L.voteEnded({ likes: 1, nos: 0 }, true), true);
+  assert.equal(L.voteEnded({ likes: 0, nos: 3 }, false), true);
 });
 
 test('제작 후에는 투표할 수 없다', () => {
@@ -100,12 +106,12 @@ test('제작이면 내 표가 없어도 표 수를 보여 준다', () => {
   assert.equal(v.likes, 3);
 });
 
-test('내 표 없는 진행 카드가 먼저, 탈락이 맨 뒤다', () => {
+test('목록은 투표, 제작, 발행, 완료 순서다', () => {
   const r = L.sortCards([
-    { id: '탈', word: '탈락', createdAt: 9 }, { id: '완', word: '완료', createdAt: 8 },
+    { id: '완', word: '완료', createdAt: 8 }, { id: '발', word: '발행', createdAt: 2 },
     { id: '제', word: '제작', createdAt: 7 }, { id: '투', word: '투표', createdAt: 1 }
   ]).map((c) => c.id);
-  assert.deepEqual(r, ['투', '완', '제', '탈']);
+  assert.deepEqual(r, ['투', '제', '발', '완']);
 });
 
 test('한 줄 설명은 앞뒤 공백을 지우고, 비었거나 80자를 넘으면 null이다', () => {
@@ -132,11 +138,6 @@ test('발행 링크가 있으면 상태와 도장이 발행이다', () => {
   const v = L.publicView({ id: 'a' }, { likes: 3, nos: 1 }, null, true, true);
   assert.equal(v.word, '발행');
   assert.equal(v.likes, 3);
-});
-
-test('목록은 제작, 발행, 탈락 순서다', () => {
-  const words = L.sortCards(['탈락', '발행', '제작', '투표'].map((word) => ({ word, createdAt: 1 }))).map((c) => c.word);
-  assert.deepEqual(words, ['투표', '제작', '발행', '탈락']);
 });
 
 const MAKE = (o) => ({ member: '산하', produced: true, maker: '', expect: '', idea: '학식 줄에서 달리는 제이제이', ...o });
