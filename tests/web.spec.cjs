@@ -194,6 +194,28 @@ test('목록의 제작 카드는 결과로, 투표 카드는 투표 화면으로
   await ctx.close();
 });
 
+test('투표할 영상은 카드 하나로 묶이고, 누르면 첫 영상의 투표 화면으로 간다', async () => {
+  const cards = [CARD({ id: 'a', line: '첫째' }), CARD({ id: 'b', line: '둘째' }), CARD({ id: 'e', line: '셋째' }), FOUR[1], FOUR[2]];
+  const { page, ctx } = await open({ list: { ok: true, cards, todo: 3 } }, { hash: '#/list' });
+  await page.locator('.stamp').first().waitFor();
+  assert.deepEqual(await page.locator('.stamp').allTextContents(), ['투표', '완료', '제작']);
+  await page.getByText('투표할 영상 3개').waitFor();
+  assert.equal(await page.getByText('둘째').count(), 0);
+  await page.locator('.card.word-투표').click();
+  await page.waitForURL(/#\/vote\/a/);
+  await page.locator('.slide').first().waitFor();
+  assert.equal(await page.locator('.slide').count(), 3);
+  await ctx.close();
+});
+
+test('투표할 영상이 없으면 묶음 카드를 보여 주지 않는다', async () => {
+  const { page, ctx } = await open({ list: { ok: true, cards: [FOUR[1], FOUR[2]], todo: 0 } }, { hash: '#/list' });
+  await page.locator('.stamp').first().waitFor();
+  assert.equal(await page.locator('.card.word-투표').count(), 0);
+  assert.equal(await page.getByText('투표할 영상').count(), 0);
+  await ctx.close();
+});
+
 test('투표 전에는 표 수가 없고 좋아요 후 완료 도장과 별이 나온 뒤 다음으로 간다', async () => {
   const cards = [CARD({ id: 'a' }), CARD({ id: 'b', line: '둘째' })];
   const { page, ctx } = await open({

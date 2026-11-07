@@ -210,6 +210,23 @@ function cardNode(c) {
     el('span', { class: `stamp w-${c.word}` }, c.word));
 }
 
+// 내 표가 필요한 영상은 카드 하나로 묶고, 누르면 첫 영상부터 위아래로 넘기며 투표한다.
+function voteCardNode(voting) {
+  const src = voting.map(thumbOf).find(Boolean);
+  const title = `투표할 영상 ${voting.length}개`;
+  return el('a', { class: 'card word-투표', href: `#/vote/${voting[0].id}`, 'aria-label': `${title}, 눌러서 투표하기` },
+    src ? el('img', { class: 'thumb', src, alt: '', referrerpolicy: 'no-referrer', on: { error: (e) => e.target.remove() } }) : null,
+    el('div', { class: 'info' }, el('div', { class: 't' }, title), el('div', { class: 'a' }, '눌러서 투표하기')),
+    el('span', { class: 'stamp w-투표' }, '투표'));
+}
+
+// 투표 묶음 카드를 맨 앞에 두고, 나머지 카드는 받은 순서대로 잇는다.
+function listNodes(cards) {
+  const voting = cards.filter((c) => c.word === '투표');
+  const rest = cards.filter((c) => c.word !== '투표').map(cardNode);
+  return voting.length ? [voteCardNode(voting), ...rest] : rest;
+}
+
 function switchBtn(label, on, icon, click) {
   const b = el('button', { type: 'button', 'aria-label': label, 'aria-pressed': on ? 'true' : 'false', on: { click } });
   b.innerHTML = icon; // 고정 문자열인 아이콘만 넣는다.
@@ -241,7 +258,7 @@ async function renderList() {
       grid.replaceWith(el('div', { class: 'empty' }, '아직 등록된 영상이 없습니다. 찾은 영상을 먼저 넣어 주세요.', el('a', { class: 'btn y', href: '#/' }, '처음으로')));
       return;
     }
-    grid.append(...r.cards.map(cardNode));
+    grid.append(...listNodes(r.cards));
   } catch (e) { if (e.message !== 'token') show(retryBox(renderList)); }
 }
 
